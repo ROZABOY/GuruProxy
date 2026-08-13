@@ -171,6 +171,13 @@ class ConnectPage extends StatelessWidget {
                     _kv(s.region, tunnel.connectedRegion.isEmpty
                         ? EgressRegions.labelFor(regionValue)
                         : '${tunnel.connectedRegion} (exit)'),
+                    _kv(
+                      'Whitelist',
+                      state.settings.activeGroupName.trim().isEmpty
+                          ? '(none / custom)'
+                          : state.settings.activeGroupName,
+                    ),
+                    _kv('CDN', 'CF scoped · Akamai OSSH (Se7en)'),
                     _kv(s.socks, tunnel.socksPort == 0 ? '${state.settings.localSocksPort}' : '${tunnel.socksPort}'),
                     _kv(s.http, tunnel.httpPort == 0 ? '${state.settings.localHttpPort}' : '${tunnel.httpPort}'),
                     if (tunnel.routeIp.isNotEmpty)

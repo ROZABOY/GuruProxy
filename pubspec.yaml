@@ -1,7 +1,7 @@
 name: guruproxy
 description: GuruProxy — multi-platform CDN-fronting client
 publish_to: "none"
-version: 2.0.0+1
+version: 2.2.1+221
 
 environment:
   sdk: ^3.12.2
@@ -27,3 +27,4 @@ flutter:
     - assets/brand/
     - assets/bin/
     - assets/ranges/
+    - assets/presets/

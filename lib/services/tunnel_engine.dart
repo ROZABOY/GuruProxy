@@ -575,34 +575,52 @@ class TunnelEngine extends ChangeNotifier {
     }
 
     if (mode == 'cdn_fronting') {
-      // FRONTED-MEEK-OSSH uses server-entry native fronts (often Akamai) and
-      // ignores FrontedMeekDialOverrides. Stick to CDN/HTTP/QUIC so CF/Google
-      // overrides actually apply.
+      // Exact Se7en Pro protocol set — OSSH is what actually connected there.
       cfg['LimitTunnelProtocols'] = [
         'FRONTED-MEEK-CDN-OSSH',
+        'FRONTED-MEEK-OSSH',
         'FRONTED-MEEK-HTTP-OSSH',
         'FRONTED-MEEK-QUIC-OSSH',
       ];
       cfg['DisableTactics'] = true;
-      // Do NOT force US when Auto — tunnel-core picks best available.
+
+      // Se7en: when Auto, force US for CDN-dense exits.
+      if (egress.isEmpty) {
+        cfg['EgressRegion'] = 'US';
+        _append('Egress region: US (CDN Auto → US, same as Se7en)');
+        _note('Region · US (CDN)');
+      }
+
+      // Always enable aggressive establish for CDN (Se7en beast path).
+      cfg['AggressiveEstablishment'] = true;
+      if (!settings.beastMode) {
+        _append('CDN: AggressiveEstablishment forced on (Se7en-compatible)');
+      }
+
       final hasUserIps = settings.customIps.trim().isNotEmpty;
+      // Always merge Se7en Akamai catch-alls unless user explicitly CF-only.
       final includeDefaults = settings.autoFindIpAndSni || !hasUserIps;
       final sniOverride = settings.sniOverrideEnabled ? settings.customSnis : '';
+      // Default CDN provider for Se7en-compatible OSSH: still prefer CF list for
+      // Cloudflare dials, but Akamai catch-alls always use Akamai SNI.
+      final preferred = FrontingDialBuilder.normalizeProvider(
+        settings.cdnProvider.trim().isEmpty ? 'cloudflare' : settings.cdnProvider,
+      );
+
+      _append('CDN preference: Cloudflare → Google → Akamai (OSSH uses Akamai catch-alls)');
+      _append('Active whitelist group: ${settings.activeGroupName.isEmpty ? "(custom/none)" : settings.activeGroupName}');
+      _note('CDN · CF scoped + Akamai OSSH fallback · ${settings.activeGroupName.isEmpty ? "-" : settings.activeGroupName}');
       if (settings.sniOverrideEnabled && settings.customSnis.trim().isNotEmpty) {
         _append('SNI override on');
-      } else {
-        _append('SNI override off (edge IP / built-in SNIs)');
       }
-      final preferred = FrontingDialBuilder.normalizeProvider(settings.cdnProvider);
-      _append('CDN priority: Cloudflare → Google → Akamai (preferred=$preferred)');
-      _append('Protocols: CDN/HTTP/QUIC only (native Meek-OSSH disabled so overrides apply)');
       if (hasUserIps && !includeDefaults) {
-        _append('Using custom White IPs only (Auto-find IP/SNI off).');
+        _append('CF-only whitelist (no Akamai fallback) — may fail if IPs are not Psiphon fronts.');
       } else if (hasUserIps) {
-        _append('Auto-find IP/SNI: custom list + built-in defaults.');
+        _append('CF whitelist scoped to Cloudflare dials; Akamai Se7en edges for OSSH.');
       } else {
-        _append('Auto-find IP/SNI: built-in defaults.');
+        _append('Built-in Se7en Akamai edges + CF/Google scoped overrides.');
       }
+
       final overrides = FrontingDialBuilder.buildDialOverrides(
         customIpList: settings.customIps,
         customSni: sniOverride,
@@ -611,8 +629,25 @@ class TunnelEngine extends ChangeNotifier {
       );
       cfg['FrontedMeekDialOverrides'] = overrides;
       cfg['FrontedMeekDialOverridesProbability'] = 1.0;
-      _append('Dial overrides loaded: ${overrides.length} (first=${overrides.isEmpty ? "-" : overrides.first['OverrideID']})');
-      _note('CDN order · CF → Google → Akamai');
+      final firstId = overrides.isEmpty ? '-' : overrides.first['OverrideID'];
+      String? catchAllId;
+      Object? catchAllDial;
+      for (final o in overrides) {
+        final m = o['MatchDialAddressRegexes'];
+        if (m is List && m.contains('.*')) {
+          catchAllId = o['OverrideID']?.toString();
+          catchAllDial = o['DialAddresses'];
+          break;
+        }
+      }
+      _append('Dial overrides: ${overrides.length} · first=$firstId');
+      if (catchAllId != null) {
+        _append('First OSSH catch-all: $catchAllId → $catchAllDial');
+      }
+      if (hasUserIps) {
+        final ips = FrontingDialBuilder.parseIps(settings.customIps).take(5).join(', ');
+        _append('CF whitelist (scoped): $ips');
+      }
     } else if (mode == 'direct') {
       cfg['LimitTunnelProtocols'] = [
         'SSH',

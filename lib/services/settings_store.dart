@@ -13,7 +13,6 @@ class SettingsStore extends ChangeNotifier {
   static Future<SettingsStore> load() async {
     final prefs = await SharedPreferences.getInstance();
     final store = SettingsStore._(prefs);
-    // One-time migrate: old installs defaulted to Akamai; v2 prefers Cloudflare.
     final schema = prefs.getInt('settingsSchema') ?? 0;
     if (schema < 2) {
       final prev = prefs.getString('cdnProvider');
@@ -23,6 +22,59 @@ class SettingsStore extends ChangeNotifier {
       await prefs.setInt('settingsSchema', 2);
     }
     return store;
+  }
+
+  /// Apply v2.2 defaults: Cloudflare + known-working CF list (once).
+  Future<void> ensureV22CloudflarePreset(String csvAssetText) async {
+    final schema = _prefs.getInt('settingsSchema') ?? 0;
+    // Schema 6 = Akamai edges always use a248.e.akamai.net (never CF SNI).
+    if (schema >= 6 && customIps.trim().isNotEmpty && activeGroupName == 'known-working') {
+      return;
+    }
+
+    cdnProvider = 'cloudflare';
+    sniOverrideEnabled = true;
+    customSnis = 'www.cloudflare.com\ncdnjs.cloudflare.com';
+    // Keep Se7en Akamai catch-alls so FRONTED-MEEK-OSSH can connect.
+    autoFindIpAndSni = true;
+    protocolMode = 'cdn_fronting';
+    beastMode = true;
+
+    // Parse CSV without importing ip_list_csv cycle in setter path — inline.
+    final ips = <String>[];
+    final entries = <IpEntry>[];
+    for (final line in csvAssetText.split(RegExp(r'\r?\n'))) {
+      final t = line.trim();
+      if (t.isEmpty || t.toLowerCase().startsWith('ip,')) continue;
+      final parts = t.split(',');
+      if (parts.isEmpty) continue;
+      final ip = parts[0].trim();
+      if (ip.split('.').length != 4) continue;
+      if (ips.contains(ip)) continue;
+      final latency = parts.length > 1 ? int.tryParse(parts[1].trim()) ?? 0 : 0;
+      ips.add(ip);
+      entries.add(IpEntry(ip: ip, latencyMs: latency, sni: 'www.cloudflare.com'));
+    }
+    if (ips.isEmpty) return;
+
+    customIps = ips.join('\n');
+    activeGroupName = 'known-working';
+    autoFindIpAndSni = true;
+    upsertIpGroup(IpGroup(
+      name: 'known-working',
+      ips: customIps,
+      snis: customSnis,
+      provider: 'cloudflare',
+      keepDefaults: true,
+      entries: entries,
+    ));
+    await _prefs.setInt('settingsSchema', 6);
+  }
+
+  String get activeGroupName => _prefs.getString('activeGroupName') ?? '';
+  set activeGroupName(String v) {
+    _prefs.setString('activeGroupName', v.trim());
+    notifyListeners();
   }
 
   String get language => _prefs.getString('language') ?? 'en';
@@ -91,7 +143,7 @@ class SettingsStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  bool get beastMode => _prefs.getBool('beastMode') ?? false;
+  bool get beastMode => _prefs.getBool('beastMode') ?? true;
   set beastMode(bool v) {
     _prefs.setBool('beastMode', v);
     notifyListeners();
@@ -204,9 +256,10 @@ class SettingsStore extends ChangeNotifier {
     final sorted = group.sortedBySpeed();
     customIps = sorted.ipsText;
     customSnis = sorted.snisText;
-    cdnProvider = sorted.provider;
+    cdnProvider = 'cloudflare'; // v2.2 always prefer CF for whitelist groups
     protocolMode = 'cdn_fronting';
     autoFindIpAndSni = sorted.keepDefaults;
+    activeGroupName = sorted.name;
     if (sorted.snisText.trim().isNotEmpty) {
       sniOverrideEnabled = true;
     }
@@ -214,13 +267,16 @@ class SettingsStore extends ChangeNotifier {
 
   void applyIranQuickConnect() {
     protocolMode = 'cdn_fronting';
-    egressRegion = 'auto'; // pick fastest/stable available
+    egressRegion = 'auto';
     autoFindIpAndSni = true;
     cdnProvider = 'cloudflare';
     beastMode = false;
     upstreamProxyUrl = '';
-    customIps = '';
-    customSnis = '';
+    // Keep known-working list if present; don't wipe user's CF whitelist.
+    if (customIps.trim().isEmpty) {
+      customSnis = 'www.cloudflare.com\ncdnjs.cloudflare.com';
+    }
+    sniOverrideEnabled = true;
   }
 
   /// Build UpstreamProxyUrl for tunnel-core (empty if unset).

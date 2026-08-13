@@ -1,9 +1,14 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 
 import '../../app_state.dart';
 import '../../l10n/strings.dart';
 import '../../services/edge_scanner.dart';
+import '../../services/ip_list_csv.dart';
 import '../../services/settings_store.dart';
 import '../../theme/guru_theme.dart';
 
@@ -196,7 +201,7 @@ class _WhiteIpPageState extends State<WhiteIpPage> {
 
     state.settings.customIps = ipText;
     state.settings.customSnis = snis;
-    state.settings.cdnProvider = _provider;
+    state.settings.cdnProvider = 'cloudflare';
     state.settings.protocolMode = 'cdn_fronting';
     state.settings.autoFindIpAndSni = _keepDefaults;
     state.settings.sniOverrideEnabled = _sniOverride;
@@ -213,22 +218,204 @@ class _WhiteIpPageState extends State<WhiteIpPage> {
         name: name,
         ips: ipText,
         snis: snis.isNotEmpty ? snis : _snis.join('\n'),
-        provider: _provider,
+        provider: 'cloudflare',
         keepDefaults: _keepDefaults,
         entries: useEntries,
       ));
+      state.settings.activeGroupName = name;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Saved group “$name” (speed-ordered).')));
     } else {
+      state.settings.activeGroupName = state.settings.activeGroupName.isEmpty ? 'custom' : state.settings.activeGroupName;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Applied ${useEntries.length} IPs (fastest first). '
-            'TLS-ok ≠ Psiphon front (403). Prefer Akamai + Auto-find.',
+            'Applied ${useEntries.length} Cloudflare IPs (fastest first). '
+            'Ping/TLS-ok ≠ guaranteed Psiphon front.',
           ),
         ),
       );
     }
     state.go(AppSection.connect);
+  }
+
+  Future<void> _importCsv() async {
+    final state = context.read<AppState>();
+    String? raw;
+    String sourceName = 'imported';
+
+    if (Platform.isWindows) {
+      final path = await _windowsPickOpenCsv();
+      if (path == null || path.isEmpty) return;
+      raw = await File(path).readAsString();
+      sourceName = path.split(Platform.pathSeparator).last;
+    } else {
+      final pasted = await _pasteCsvDialog();
+      if (pasted == null) return;
+      raw = pasted;
+      sourceName = 'pasted';
+    }
+    if (!mounted) return;
+    final rows = IpListCsv.parse(raw);
+    if (rows.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No IPs found in CSV (need header ip,latency_ms,ttl,message).')),
+      );
+      return;
+    }
+
+    final name = _groupNameCtrl.text.trim().isNotEmpty
+        ? _groupNameCtrl.text.trim()
+        : (sourceName.replaceAll(RegExp(r'\.(csv|txt)$', caseSensitive: false), '').trim().isEmpty
+            ? 'imported'
+            : sourceName.replaceAll(RegExp(r'\.(csv|txt)$', caseSensitive: false), ''));
+
+    final entries = rows
+        .map((r) => IpEntry(
+              ip: r.ip,
+              latencyMs: r.latencyMs,
+              sni: _snis.isNotEmpty ? _snis.first : 'www.cloudflare.com',
+            ))
+        .toList();
+    final ipText = entries.map((e) => e.ip).join('\n');
+    final snis = _sniOverride ? _snis.join('\n') : 'www.cloudflare.com\ncdnjs.cloudflare.com';
+
+    state.settings.upsertIpGroup(IpGroup(
+      name: name,
+      ips: ipText,
+      snis: snis,
+      provider: 'cloudflare',
+      keepDefaults: _keepDefaults,
+      entries: entries,
+    ));
+    state.settings.applyIpGroup(state.settings.ipGroups.firstWhere((g) => g.name == name));
+    setState(() {
+      _manualCtrl.text = ipText;
+      _sniCtrl.text = snis;
+      _provider = 'cloudflare';
+      _groupNameCtrl.text = name;
+    });
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Imported ${entries.length} IPs → group “$name” (active whitelist).')),
+    );
+  }
+
+  Future<String?> _windowsPickOpenCsv() async {
+    final ps = await Process.run(
+      'powershell',
+      [
+        '-NoProfile',
+        '-Command',
+        "Add-Type -AssemblyName System.Windows.Forms; "
+            "\$f = New-Object System.Windows.Forms.OpenFileDialog; "
+            "\$f.Filter = 'CSV (*.csv;*.txt)|*.csv;*.txt|All|*.*'; "
+            "\$f.Title = 'Import IP list CSV'; "
+            "if (\$f.ShowDialog() -eq 'OK') { \$f.FileName }",
+      ],
+      runInShell: true,
+    );
+    final out = (ps.stdout as String).trim();
+    return out.isEmpty ? null : out;
+  }
+
+  Future<String?> _pasteCsvDialog() async {
+    final ctrl = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Paste CSV'),
+        content: SizedBox(
+          width: 420,
+          child: TextField(
+            controller: ctrl,
+            maxLines: 12,
+            decoration: const InputDecoration(
+              hintText: 'ip,latency_ms,ttl,message\n104.16.7.36,22,50,ping ok',
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, ctrl.text),
+            child: const Text('Import'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _exportCsv() async {
+    final state = context.read<AppState>();
+    final groupName = state.settings.activeGroupName.trim();
+    final groups = state.settings.ipGroups;
+
+    List<ParsedIpRow> rows;
+    IpGroup? active;
+    if (groupName.isNotEmpty) {
+      for (final g in groups) {
+        if (g.name.toLowerCase() == groupName.toLowerCase()) {
+          active = g;
+          break;
+        }
+      }
+    }
+    if (active != null && active.entries.isNotEmpty) {
+      rows = active.entries
+          .map((e) => ParsedIpRow(ip: e.ip, latencyMs: e.latencyMs, ttl: 50, message: 'ping ok'))
+          .toList();
+    } else if (_scanner.healthy.isNotEmpty) {
+      rows = _scanner.healthy
+          .map((h) => ParsedIpRow(ip: h.ip, latencyMs: h.latencyMs, ttl: 50, message: h.message))
+          .toList();
+    } else {
+      rows = _manualIps
+          .map((ip) => ParsedIpRow(ip: ip, latencyMs: 0, ttl: null, message: 'exported'))
+          .toList();
+    }
+    if (rows.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Nothing to export.')));
+      return;
+    }
+
+    final csv = IpListCsv.export(rows: rows);
+    final suggested = '${groupName.isEmpty ? "guruproxy-ips" : groupName}.csv';
+
+    String? out;
+    if (Platform.isWindows) {
+      out = await _windowsPickSaveCsv(suggested);
+      if (out == null) return;
+      if (!out.toLowerCase().endsWith('.csv')) out = '$out.csv';
+    } else {
+      final dir = await getApplicationDocumentsDirectory();
+      out = '${dir.path}${Platform.pathSeparator}$suggested';
+    }
+    await File(out).writeAsString(csv);
+    await Clipboard.setData(ClipboardData(text: csv));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Exported ${rows.length} IPs → $out (also copied)')),
+    );
+  }
+
+  Future<String?> _windowsPickSaveCsv(String fileName) async {
+    final ps = await Process.run(
+      'powershell',
+      [
+        '-NoProfile',
+        '-Command',
+        "Add-Type -AssemblyName System.Windows.Forms; "
+            "\$f = New-Object System.Windows.Forms.SaveFileDialog; "
+            "\$f.Filter = 'CSV (*.csv)|*.csv'; "
+            "\$f.FileName = '$fileName'; "
+            "\$f.Title = 'Export IP list'; "
+            "if (\$f.ShowDialog() -eq 'OK') { \$f.FileName }",
+      ],
+      runInShell: true,
+    );
+    final out = (ps.stdout as String).trim();
+    return out.isEmpty ? null : out;
   }
 
   @override
@@ -249,6 +436,30 @@ class _WhiteIpPageState extends State<WhiteIpPage> {
                 Text(s.menuWhiteIp, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 4),
                 Text(s.helpScan, style: const TextStyle(fontSize: 11.5, color: Color(0xFF9BB0B4))),
+                const SizedBox(height: 6),
+                Text(
+                  'Active whitelist: ${state.settings.activeGroupName.trim().isEmpty ? "(none)" : state.settings.activeGroupName}'
+                  ' · CF scoped + Akamai OSSH fallback',
+                  style: const TextStyle(fontSize: 12, color: GuruTheme.sand, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: _scanner.running ? null : _importCsv,
+                      style: _squareOut(),
+                      icon: const Icon(Icons.upload_file, size: 16),
+                      label: const Text('Import CSV'),
+                    ),
+                    const SizedBox(width: 8),
+                    OutlinedButton.icon(
+                      onPressed: _scanner.running ? null : _exportCsv,
+                      style: _squareOut(),
+                      icon: const Icon(Icons.download, size: 16),
+                      label: const Text('Export CSV'),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 10),
                 Row(
                   children: [

@@ -7,21 +7,35 @@ import sys
 import time
 from pathlib import Path
 
-work = Path(os.environ["LOCALAPPDATA"]) / "GuruProxy" / "connect-smoke"
+work = Path(os.environ["LOCALAPPDATA"]) / "GuruProxy" / "connect-smoke-v22"
 work.mkdir(parents=True, exist_ok=True)
 (work / "data").mkdir(exist_ok=True)
 
-net = json.loads(
-    Path(os.environ["LOCALAPPDATA"], "GuruProxy", "network_config.json").read_text(
-        encoding="utf-8"
-    )
-)
-src_exe = Path(r"C:\laragon\www\Se7en-Pro\GuruProxy_v2\assets\bin\psiphon-tunnel-core.exe")
-src_srv = Path(r"C:\laragon\www\Se7en-Pro\GuruProxy_v2\assets\bin\server_entries.txt")
+net_path = Path(os.environ["LOCALAPPDATA"]) / "GuruProxy" / "network_config.json"
+if not net_path.exists():
+    # fall back to PsiphonUI
+    net_path = Path(os.environ["LOCALAPPDATA"]) / "PsiphonUI" / "network_config.json"
+net = json.loads(net_path.read_text(encoding="utf-8"))
+print("net from", net_path)
+
+src_exe = Path(r"C:\laragon\www\Se7en-Pro\GuruProxy_v2.2\assets\bin\psiphon-tunnel-core.exe")
+src_srv = Path(r"C:\laragon\www\Se7en-Pro\GuruProxy_v2.2\assets\bin\server_entries.txt")
 exe = work / "GuruProxy.Tunnel.exe"
 srv = work / "server_entries.txt"
 shutil.copy2(src_exe, exe)
 shutil.copy2(src_srv, srv)
+
+# Overrides — verify Akamai edges keep Akamai SNI even when CF custom SNI is set
+cf_ips = ["104.16.7.36", "162.159.82.102"]
+akamai = [
+    ("edge-a-1", "23.215.0.206"),
+    ("edge-a-2", "23.215.0.203"),
+    ("edge-b-1", "23.212.250.91"),
+    ("edge-b-2", "23.212.250.78"),
+    ("edge-c-1", "23.12.147.13"),
+    ("edge-d-1", "23.73.207.8"),
+    ("edge-original", "92.123.102.43"),
+]
 
 overrides = [
     {
@@ -33,70 +47,38 @@ overrides = [
         "ALPNProtocols": ["h2", "http/1.1"],
         "TLSProfile": "Chrome-83",
     },
-    {
-        "OverrideID": "edge-a-1",
-        "MatchDialAddressRegexes": [".*"],
-        "DialAddresses": ["23.215.0.206"],
-        "SNIServerName": "a248.e.akamai.net",
-        "VerifyServerNames": ["a248.e.akamai.net", "23.215.0.206", "a.akamaized.net"],
-        "ALPNProtocols": ["http/1.1"],
-        "TLSProfile": "Chrome-83",
-    },
-    {
-        "OverrideID": "edge-a-2",
-        "MatchDialAddressRegexes": [".*"],
-        "DialAddresses": ["23.215.0.203"],
-        "SNIServerName": "a248.e.akamai.net",
-        "VerifyServerNames": ["a248.e.akamai.net", "23.215.0.203", "a.akamaized.net"],
-        "ALPNProtocols": ["http/1.1"],
-        "TLSProfile": "Chrome-83",
-    },
-    {
-        "OverrideID": "edge-b-1",
-        "MatchDialAddressRegexes": [".*"],
-        "DialAddresses": ["23.212.250.91"],
-        "SNIServerName": "a248.e.akamai.net",
-        "VerifyServerNames": ["a248.e.akamai.net", "23.212.250.91", "a.akamaized.net"],
-        "ALPNProtocols": ["http/1.1"],
-        "TLSProfile": "Chrome-83",
-    },
-    {
-        "OverrideID": "edge-b-2",
-        "MatchDialAddressRegexes": [".*"],
-        "DialAddresses": ["23.212.250.78"],
-        "SNIServerName": "a248.e.akamai.net",
-        "VerifyServerNames": ["a248.e.akamai.net", "23.212.250.78", "a.akamaized.net"],
-        "ALPNProtocols": ["http/1.1"],
-        "TLSProfile": "Chrome-83",
-    },
-    {
-        "OverrideID": "edge-c-1",
-        "MatchDialAddressRegexes": [".*"],
-        "DialAddresses": ["23.12.147.13"],
-        "SNIServerName": "a248.e.akamai.net",
-        "VerifyServerNames": ["a248.e.akamai.net", "23.12.147.13", "a.akamaized.net"],
-        "ALPNProtocols": ["http/1.1"],
-        "TLSProfile": "Chrome-83",
-    },
-    {
-        "OverrideID": "edge-d-1",
-        "MatchDialAddressRegexes": [".*"],
-        "DialAddresses": ["23.73.207.8"],
-        "SNIServerName": "a248.e.akamai.net",
-        "VerifyServerNames": ["a248.e.akamai.net", "23.73.207.8", "a.akamaized.net"],
-        "ALPNProtocols": ["http/1.1"],
-        "TLSProfile": "Chrome-83",
-    },
-    {
-        "OverrideID": "edge-original",
-        "MatchDialAddressRegexes": [".*"],
-        "DialAddresses": ["92.123.102.43"],
-        "SNIServerName": "a248.e.akamai.net",
-        "VerifyServerNames": ["a248.e.akamai.net", "92.123.102.43", "a.akamaized.net"],
-        "ALPNProtocols": ["http/1.1"],
-        "TLSProfile": "Chrome-83",
-    },
 ]
+for i, ip in enumerate(cf_ips, 1):
+    overrides.append(
+        {
+            "OverrideID": f"cf-user-{i}",
+            "MatchFrontingProviderIDRegexes": ["(?i)cloudflare"],
+            "MatchDialAddressRegexes": [r"(?i)(cloudflare|cdnjs|workers\.dev)"],
+            "DialAddresses": [ip],
+            "SNIServerName": "www.cloudflare.com",
+            "VerifyServerNames": ["www.cloudflare.com", ip, "cdnjs.cloudflare.com"],
+            "ALPNProtocols": ["h2", "http/1.1"],
+            "TLSProfile": "Chrome-83",
+        }
+    )
+for oid, ip in akamai:
+    overrides.append(
+        {
+            "OverrideID": oid,
+            "MatchDialAddressRegexes": [".*"],
+            "DialAddresses": [ip],
+            # CRITICAL: must be Akamai SNI, never www.cloudflare.com
+            "SNIServerName": "a248.e.akamai.net",
+            "VerifyServerNames": [
+                "a248.e.akamai.net",
+                ip,
+                "a.akamaized.net",
+                "a.akamaihd.net",
+            ],
+            "ALPNProtocols": ["http/1.1"],
+            "TLSProfile": "Chrome-83",
+        }
+    )
 
 ver = sys.getwindowsversion()
 cfg = {
@@ -119,9 +101,10 @@ cfg = {
     "EmitServerAlerts": True,
     "EmitBytesTransferred": True,
     "EstablishTunnelTimeoutSeconds": 90,
-    "LocalHttpProxyPort": 18081,
-    "LocalSocksProxyPort": 11081,
+    "LocalHttpProxyPort": 18082,
+    "LocalSocksProxyPort": 11082,
     "EgressRegion": "US",
+    "AggressiveEstablishment": True,
     "LimitTunnelProtocols": [
         "FRONTED-MEEK-CDN-OSSH",
         "FRONTED-MEEK-OSSH",
@@ -152,6 +135,7 @@ print("pid", proc.pid)
 connected = False
 socks = 0
 region = ""
+proto = ""
 start = time.time()
 lines = []
 while time.time() - start < 95:
@@ -163,7 +147,14 @@ while time.time() - start < 95:
         continue
     line = line.strip()
     lines.append(line)
-    if "Tunnels" in line and re.search(r'"count"\s*:\s*[1-9]', line):
+    if "Tunnels" in line and '"noticeType":"Tunnels"' in line.replace(" ", "") or (
+        '"noticeType": "Tunnels"' in line
+    ):
+        if re.search(r'"count"\s*:\s*[1-9]', line):
+            connected = True
+            break
+    # robust: noticeType Tunnels with count>=1
+    if '"Tunnels"' in line and re.search(r'"count"\s*:\s*[1-9]', line) and "limitTunnelProtocols" not in line:
         connected = True
         break
     if "ListeningSocksProxyPort" in line:
@@ -178,6 +169,7 @@ while time.time() - start < 95:
 log_path.write_text("\n".join(lines), encoding="utf-8")
 if proc.poll() is None:
     proc.kill()
+elapsed = round(time.time() - start, 1)
 print(
     "CONNECTED",
     connected,
@@ -185,6 +177,8 @@ print(
     socks,
     "REGION",
     region,
+    "SEC",
+    elapsed,
     "EXIT",
     proc.poll(),
     "LINES",
@@ -194,15 +188,26 @@ keys = (
     "Tunnels",
     "ListeningSocks",
     "ConnectedServer",
+    "tunnel connected",
+    "Tunnel established",
+    "beast mode",
+    "Connecting (",
     "unexpected status",
     "403",
     "failed to connect",
-    "error processing",
     "Upstream",
-    "Warning",
     "Establish",
-    "ListeningHttp",
 )
+shown = 0
 for L in lines:
     if any(k in L for k in keys):
         print(L[:260])
+        shown += 1
+        if shown > 40:
+            break
+if not connected:
+    print("FAIL — last 15 lines:")
+    for L in lines[-15:]:
+        print(L[:260])
+    sys.exit(1)
+print("OK")

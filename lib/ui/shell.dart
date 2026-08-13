@@ -61,22 +61,34 @@ class _TopBar extends StatelessWidget {
             child: Row(
               children: [
                 const SizedBox(width: 8),
-                Image.asset(
-                  'assets/brand/app-icon.png',
-                  width: 20,
-                  height: 20,
-                  errorBuilder: (context, error, stackTrace) {
-                    return const Icon(Icons.shield_outlined, size: 18, color: GuruTheme.sand);
-                  },
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  s.appName,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.6,
-                    fontSize: 13,
-                    color: Color(0xFFF4F1EA),
+                InkWell(
+                  onTap: () => state.go(AppSection.connect),
+                  borderRadius: BorderRadius.circular(4),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Image.asset(
+                          'assets/brand/app-icon.png',
+                          width: 20,
+                          height: 20,
+                          errorBuilder: (context, error, stackTrace) {
+                            return const Icon(Icons.shield_outlined, size: 18, color: GuruTheme.sand);
+                          },
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          s.appName,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.6,
+                            fontSize: 13,
+                            color: Color(0xFFF4F1EA),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),

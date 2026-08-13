@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -24,11 +25,11 @@ Future<void> main() async {
   if (desktop) {
     await windowManager.ensureInitialized();
     const opts = WindowOptions(
-      size: Size(860, 560),
+      size: Size(900, 580),
       minimumSize: Size(720, 480),
       center: true,
       backgroundColor: Colors.transparent,
-      title: 'GuruProxy',
+      title: 'GuruProxy v2.2',
       titleBarStyle: TitleBarStyle.normal,
     );
     await windowManager.setPreventClose(true);
@@ -39,6 +40,11 @@ Future<void> main() async {
   }
 
   final settings = await SettingsStore.load();
+  try {
+    final csv = await rootBundle.loadString('assets/presets/known_working_cf.csv');
+    await settings.ensureV22CloudflarePreset(csv);
+  } catch (_) {}
+
   final bootstrap = AssetBootstrap();
   await bootstrap.ensureReady();
   final tunnel = TunnelEngine(settings: settings, bootstrap: bootstrap);
@@ -66,7 +72,7 @@ class GuruProxyApp extends StatelessWidget {
     final state = context.watch<AppState>();
     final isFa = state.locale.languageCode == 'fa';
     return MaterialApp(
-      title: 'GuruProxy',
+      title: 'GuruProxy v2.2',
       debugShowCheckedModeBanner: false,
       locale: state.locale,
       theme: GuruTheme.light,

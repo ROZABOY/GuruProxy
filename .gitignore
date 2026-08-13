@@ -1,4 +1,4 @@
-# Flutter / Dart
+﻿# Flutter / Dart
 .dart_tool/
 .packages
 .pub-cache/
@@ -18,6 +18,14 @@ assets/bin/server_entries.txt
 **/*plaintext*
 .env
 .env.*
+
+# Local run folder binaries (use GitHub Releases)
+x-run_here/**/*.apk
+x-run_here/**/*.zip
+x-run_here/**/*.exe
+x-run_here/**/*.dll
+x-run_here/**/*.dat
+x-run_here/GuruProxy-*-windows/
 
 # OS
 Thumbs.db
