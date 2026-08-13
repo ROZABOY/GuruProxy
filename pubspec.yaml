@@ -1,0 +1,29 @@
+name: guruproxy
+description: GuruProxy — multi-platform CDN-fronting client
+publish_to: "none"
+version: 2.0.0+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  shared_preferences: ^2.5.5
+  path_provider: ^2.1.6
+  provider: ^6.1.5+1
+  window_manager: ^0.5.2
+  tray_manager: ^0.5.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/brand/
+    - assets/bin/
+    - assets/ranges/

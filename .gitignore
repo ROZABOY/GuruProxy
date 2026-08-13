@@ -1,0 +1,25 @@
+# Flutter / Dart
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+*.iml
+
+# IDE
+.idea/
+.vscode/
+*.user
+
+# Secrets & heavy binaries (never commit)
+assets/bin/psiphon-tunnel-core.exe
+assets/bin/server_entries.txt
+**/network_config.json
+**/*plaintext*
+.env
+.env.*
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
