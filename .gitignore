@@ -19,13 +19,15 @@ assets/bin/server_entries.txt
 .env
 .env.*
 
-# Local run folder binaries (use GitHub Releases)
-x-run_here/**/*.apk
-x-run_here/**/*.zip
-x-run_here/**/*.exe
-x-run_here/**/*.dll
-x-run_here/**/*.dat
-x-run_here/GuruProxy-*-windows/
+# Local run folder binaries (ship via GitHub Releases)
+x_run_here_x/**/*.apk
+x_run_here_x/**/*.zip
+x_run_here_x/**/*.exe
+x_run_here_x/**/*.dll
+x_run_here_x/**/*.dat
+x_run_here_x/**/*.so
+x_run_here_x/GuruProxy-*-windows/
+x-run_here/
 
 # OS
 Thumbs.db
