@@ -2,7 +2,7 @@ class S {
   S(this.fa);
   final bool fa;
 
-  String get appName => 'GuruProxy v2.3';
+  String get appName => 'GuruProxy v2.4';
   String get menuConnect => fa ? 'اتصال' : 'Connect';
   String get menuSession => fa ? 'نشست' : 'Session';
   String get menuWhiteIp => fa ? 'اسکنر IP' : 'White IP';
@@ -24,6 +24,15 @@ class S {
   String get status => fa ? 'وضعیت' : 'Status';
   String get socks => fa ? 'SOCKS' : 'SOCKS';
   String get http => fa ? 'HTTP' : 'HTTP';
+  String get protocols => fa ? 'پروتکل‌ها' : 'Protocols';
+  String get autoProtocol => fa ? 'پروتکل خودکار (موبایل/دسکتاپ)' : 'Auto-protocol (mobile/desktop)';
+  String get autoProtocolOn => fa ? 'خودکار (بهینه پلتفرم)' : 'Auto (platform-optimized)';
+  String get autoProtocolHint => fa
+      ? 'روشن: اندروید/iOS اولویت QUIC و Meek؛ ویندوز مجموعه CDN+OSSH سِون. خاموش: فقط چک‌باکس‌های زیر.'
+      : 'On: Android/iOS prefer QUIC + Meek; Windows keeps Se7en CDN+OSSH. Off: only the checkboxes below.';
+  String get protocolChecksHint => fa
+      ? 'هر پروتکل را جدا روشن/خاموش کنید. روی موبایل معمولاً QUIC و Unfronted بهترند.'
+      : 'Toggle each protocol. On phones, QUIC and Unfronted Meek often work better.';
   String get proxyListenMode => fa ? 'حالت پروکسی محلی' : 'Local proxy mode';
   String get proxyListenMixed => fa ? 'هر دو (SOCKS + HTTP)' : 'Mixed (SOCKS + HTTP)';
   String get proxyListenSocks => fa ? 'فقط SOCKS5' : 'SOCKS5 only';
@@ -114,12 +123,13 @@ class S {
   String get timeoutSec => fa ? 'مهلت اتصال (ثانیه)' : 'Establish timeout (sec)';
   String get helpTitle => fa ? 'راهنمای GuruProxy' : 'GuruProxy Help';
   String get aboutTitle => fa ? 'درباره GuruProxy' : 'About GuruProxy';
-  String get tagline =>
-      fa ? 'پروکسی CDN برای شبکه‌های فیلترشده' : 'CDN-fronted proxy for filtered networks';
+  String get tagline => fa
+      ? 'پروکسی CDN — نسخه موبایل‌محور v2.4'
+      : 'CDN-fronted proxy — app-focused mobile build';
 
   String get aboutBody => fa
-      ? 'GuruProxy یک کلاینت مستقل برای تونل CDN-fronting است. رابط و برندینگ ماست؛ موتور تونل از پروژهٔ متن‌باز Psiphon استفاده می‌کند.\n\nبا سپاس از تیم Psiphon برای tunnel-core و اکوسیستم circumvention که این نرم‌افزار روی آن بنا شده است.'
-      : 'GuruProxy is an independent CDN-fronting client. The UI and branding are ours; the tunnel engine uses the open-source Psiphon tunnel-core.\n\nThanks to the Psiphon team for tunnel-core and the circumvention ecosystem this app builds on.';
+      ? 'GuruProxy v2.4 (app-focused): رابط موبایل با نوتیفیکیشن نشست، Stop سریع، و پروتکل‌های قابل انتخاب. هسته تونل فعلاً روی ویندوز کامل است؛ UI اندروید/iOS آمادهٔ بک‌اند موبایل است.\n\nبا سپاس از تیم Psiphon برای tunnel-core.'
+      : 'GuruProxy v2.4 (app-focused): mobile UI with session notification, Stop action, and selectable protocols. Tunnel core is Windows-complete today; Android/iOS UI is ready for a mobile backend.\n\nThanks to the Psiphon team for tunnel-core.';
 
   String get helpCdn => fa
       ? 'حالت CDN Fronting ترافیک را از لبه‌های CDN (مثل Akamai) عبور می‌دهد. پروکسی سیستم نادیده گرفته می‌شود. خطای 403 یعنی IP فقط TLS دارد ولی فرانت Psiphon نیست — Iran Quick یا گروه Akamai با Keep defaults را امتحان کنید.'

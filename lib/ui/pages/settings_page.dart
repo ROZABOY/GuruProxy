@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../app_state.dart';
 import '../../l10n/strings.dart';
+import '../../services/protocol_catalog.dart';
 import '../../theme/guru_theme.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -79,6 +80,42 @@ class _SettingsPageState extends State<SettingsPage> {
             if (v != null) setState(() => settings.protocolMode = v);
           },
         ),
+        const SizedBox(height: 12),
+        Text(s.protocols, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text(s.autoProtocol),
+          subtitle: Text(s.autoProtocolHint, style: const TextStyle(fontSize: 11)),
+          value: settings.autoProtocol,
+          activeThumbColor: GuruTheme.sand,
+          onChanged: (v) => setState(() => settings.autoProtocol = v),
+        ),
+        Text(s.protocolChecksHint, style: const TextStyle(fontSize: 11, color: Color(0xFF8FA3A7))),
+        const SizedBox(height: 4),
+        ...ProtocolCatalog.options.map((opt) {
+          final on = settings.enabledProtocols.contains(opt.id);
+          return CheckboxListTile(
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            value: on,
+            enabled: !settings.autoProtocol,
+            activeColor: GuruTheme.sand,
+            title: Text(opt.label, style: const TextStyle(fontSize: 13)),
+            subtitle: Text(opt.hint, style: const TextStyle(fontSize: 10.5, color: Color(0xFF8FA3A7))),
+            controlAffinity: ListTileControlAffinity.leading,
+            onChanged: settings.autoProtocol
+                ? null
+                : (v) => setState(() => settings.setProtocolEnabled(opt.id, v ?? false)),
+          );
+        }),
+        if (settings.autoProtocol)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              '${s.autoProtocolOn}: ${settings.resolveTunnelProtocols().join(', ')}',
+              style: const TextStyle(fontSize: 10.5, color: Color(0xFF7DCFB6)),
+            ),
+          ),
         const SizedBox(height: 10),
         DropdownButtonFormField<String>(
           initialValue: settings.cdnProvider,

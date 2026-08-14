@@ -616,15 +616,15 @@ class TunnelEngine extends ChangeNotifier {
       _append('Using upstream proxy: ${upstream.replaceAll(RegExp(r':[^:@/]+@'), ':***@')}');
     }
 
+    final protocols = settings.resolveTunnelProtocols();
+    cfg['LimitTunnelProtocols'] = protocols;
+    cfg['DisableTactics'] = true;
+    _append(
+      'Protocols (${settings.autoProtocol ? "auto" : "manual"}): ${protocols.join(", ")}',
+    );
+
     if (mode == 'cdn_fronting') {
-      // Exact Se7en Pro protocol set — OSSH is what actually connected there.
-      cfg['LimitTunnelProtocols'] = [
-        'FRONTED-MEEK-CDN-OSSH',
-        'FRONTED-MEEK-OSSH',
-        'FRONTED-MEEK-HTTP-OSSH',
-        'FRONTED-MEEK-QUIC-OSSH',
-      ];
-      cfg['DisableTactics'] = true;
+      // Dial overrides still follow Se7en-identical catch-all edges.
 
       // Se7en: when Auto, force US for CDN-dense exits.
       if (egress.isEmpty) {
@@ -693,15 +693,8 @@ class TunnelEngine extends ChangeNotifier {
         _append('Whitelist IPs (catch-all): $ips');
       }
     } else if (mode == 'direct') {
-      cfg['LimitTunnelProtocols'] = [
-        'SSH',
-        'OSSH',
-        'TLS-OSSH',
-        'QUIC-OSSH',
-        'FRONTED-MEEK-OSSH',
-        'FRONTED-MEEK-CDN-OSSH',
-      ];
-      cfg['DisableTactics'] = true;
+      // LimitTunnelProtocols already set from checkbox/auto resolve above.
+      _append('Direct/mixed mode — dial overrides not injected');
     }
 
     if (settings.blockedApps.isNotEmpty) {

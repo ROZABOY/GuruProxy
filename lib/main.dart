@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,6 +9,7 @@ import 'package:window_manager/window_manager.dart';
 import 'app_state.dart';
 import 'services/asset_bootstrap.dart';
 import 'services/guru_tray.dart';
+import 'services/session_notification.dart';
 import 'services/settings_store.dart';
 import 'services/tunnel_engine.dart';
 import 'theme/guru_theme.dart';
@@ -22,6 +25,22 @@ Future<void> main() async {
           defaultTargetPlatform == TargetPlatform.linux ||
           defaultTargetPlatform == TargetPlatform.macOS);
 
+  final mobile = !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS);
+
+  if (mobile) {
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarIconBrightness: Brightness.light,
+      ),
+    );
+  }
+
   if (desktop) {
     await windowManager.ensureInitialized();
     const opts = WindowOptions(
@@ -29,7 +48,7 @@ Future<void> main() async {
       minimumSize: Size(720, 480),
       center: true,
       backgroundColor: Colors.transparent,
-      title: 'GuruProxy v2.3',
+      title: 'GuruProxy v2.4',
       titleBarStyle: TitleBarStyle.normal,
     );
     await windowManager.setPreventClose(true);
@@ -48,6 +67,11 @@ Future<void> main() async {
   final bootstrap = AssetBootstrap();
   await bootstrap.ensureReady();
   final tunnel = TunnelEngine(settings: settings, bootstrap: bootstrap);
+
+  await SessionNotification.instance.init(onStop: () => tunnel.stop());
+  tunnel.addListener(() {
+    unawaited(SessionNotification.instance.sync(tunnel));
+  });
 
   if (desktop && defaultTargetPlatform == TargetPlatform.windows) {
     _tray = GuruTray(tunnel);
@@ -72,7 +96,7 @@ class GuruProxyApp extends StatelessWidget {
     final state = context.watch<AppState>();
     final isFa = state.locale.languageCode == 'fa';
     return MaterialApp(
-      title: 'GuruProxy v2.3',
+      title: 'GuruProxy v2.4',
       debugShowCheckedModeBanner: false,
       locale: state.locale,
       theme: GuruTheme.light,

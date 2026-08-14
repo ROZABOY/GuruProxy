@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -14,50 +15,178 @@ import 'pages/white_ip_page.dart';
 class AppShell extends StatelessWidget {
   const AppShell({super.key});
 
+  bool get _mobile =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS);
+
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final s = S(state.locale.languageCode == 'fa');
+    final isFa = state.locale.languageCode == 'fa';
 
-    return Scaffold(
-      body: Column(
-        children: [
-          _TopBar(s: s, state: state),
-          Expanded(
-            child: ColoredBox(
-              color: GuruTheme.ink,
-              child: switch (state.section) {
-                AppSection.connect => const ConnectPage(),
-                AppSection.whiteIp => const WhiteIpPage(),
-                AppSection.settings => const SettingsPage(),
-                AppSection.log => const LogPage(),
-                AppSection.help => const HelpPage(),
-                AppSection.about => const AboutPage(),
-              },
+    if (_mobile) {
+      return Scaffold(
+        backgroundColor: GuruTheme.ink,
+        appBar: AppBar(
+          backgroundColor: GuruTheme.tealDeep,
+          foregroundColor: const Color(0xFFF4F1EA),
+          elevation: 0,
+          scrolledUnderElevation: 0,
+          titleSpacing: 12,
+          title: InkWell(
+            onTap: () => state.go(AppSection.connect),
+            child: Row(
+              children: [
+                Image.asset(
+                  'assets/brand/app-icon.png',
+                  width: 28,
+                  height: 28,
+                  errorBuilder: (_, __, ___) =>
+                      const Icon(Icons.shield_outlined, size: 24, color: GuruTheme.sand),
+                ),
+                const SizedBox(width: 10),
+                Flexible(
+                  child: Text(
+                    s.appName,
+                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16, letterSpacing: 0.3),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
             ),
           ),
-        ],
+          actions: [
+            TextButton(
+              onPressed: state.toggleLanguage,
+              child: Text(s.langToggle, style: const TextStyle(fontWeight: FontWeight.w700)),
+            ),
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert),
+              onSelected: (v) {
+                switch (v) {
+                  case 'help':
+                    state.go(AppSection.help);
+                  case 'about':
+                    state.go(AppSection.about);
+                  case 'start':
+                    state.go(AppSection.connect);
+                    state.tunnel.start();
+                  case 'stop':
+                    state.tunnel.stop();
+                  case 'iran':
+                    state.settings.applyIranQuickConnect();
+                    state.go(AppSection.connect);
+                    state.tunnel.start();
+                }
+              },
+              itemBuilder: (context) => [
+                PopupMenuItem(value: 'start', enabled: !state.tunnel.isActive, child: Text(s.startConn)),
+                PopupMenuItem(value: 'stop', enabled: state.tunnel.isActive, child: Text(s.stopConn)),
+                PopupMenuItem(value: 'iran', child: Text(s.iranQuick)),
+                const PopupMenuDivider(),
+                PopupMenuItem(value: 'help', child: Text(s.menuHelp)),
+                PopupMenuItem(value: 'about', child: Text(s.menuAbout)),
+              ],
+            ),
+          ],
+        ),
+        body: ColoredBox(
+          color: GuruTheme.ink,
+          child: _page(state),
+        ),
+        bottomNavigationBar: NavigationBar(
+          height: 64,
+          backgroundColor: GuruTheme.tealDeep,
+          indicatorColor: GuruTheme.sand.withValues(alpha: 0.22),
+          selectedIndex: _navIndex(state.section),
+          labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+          onDestinationSelected: (i) {
+            state.go(switch (i) {
+              1 => AppSection.whiteIp,
+              2 => AppSection.settings,
+              3 => AppSection.log,
+              _ => AppSection.connect,
+            });
+          },
+          destinations: [
+            NavigationDestination(
+              icon: const Icon(Icons.shield_outlined),
+              selectedIcon: const Icon(Icons.shield),
+              label: isFa ? 'اتصال' : 'Connect',
+            ),
+            NavigationDestination(
+              icon: const Icon(Icons.travel_explore_outlined),
+              selectedIcon: const Icon(Icons.travel_explore),
+              label: isFa ? 'White IP' : 'White IP',
+            ),
+            NavigationDestination(
+              icon: const Icon(Icons.tune_outlined),
+              selectedIcon: const Icon(Icons.tune),
+              label: isFa ? 'تنظیمات' : 'Settings',
+            ),
+            NavigationDestination(
+              icon: const Icon(Icons.receipt_long_outlined),
+              selectedIcon: const Icon(Icons.receipt_long),
+              label: isFa ? 'لاگ' : 'Log',
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Desktop / wide: classic menu bar, still SafeArea for any inset displays.
+    return Scaffold(
+      backgroundColor: GuruTheme.ink,
+      body: SafeArea(
+        child: Column(
+          children: [
+            _DesktopTopBar(s: s, state: state),
+            Expanded(
+              child: ColoredBox(
+                color: GuruTheme.ink,
+                child: _page(state),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
+
+  int _navIndex(AppSection section) => switch (section) {
+        AppSection.whiteIp => 1,
+        AppSection.settings => 2,
+        AppSection.log => 3,
+        AppSection.help || AppSection.about || AppSection.connect => 0,
+      };
+
+  Widget _page(AppState state) => switch (state.section) {
+        AppSection.connect => const ConnectPage(),
+        AppSection.whiteIp => const WhiteIpPage(),
+        AppSection.settings => const SettingsPage(),
+        AppSection.log => const LogPage(),
+        AppSection.help => const HelpPage(),
+        AppSection.about => const AboutPage(),
+      };
 }
 
-class _TopBar extends StatelessWidget {
-  const _TopBar({required this.s, required this.state});
+class _DesktopTopBar extends StatelessWidget {
+  const _DesktopTopBar({required this.s, required this.state});
   final S s;
   final AppState state;
 
   @override
   Widget build(BuildContext context) {
     final active = state.tunnel.isActive;
-
     return Material(
       color: GuruTheme.tealDeep,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           SizedBox(
-            height: 36,
+            height: 40,
             child: Row(
               children: [
                 const SizedBox(width: 8),
@@ -73,9 +202,8 @@ class _TopBar extends StatelessWidget {
                           'assets/brand/app-icon.png',
                           width: 20,
                           height: 20,
-                          errorBuilder: (context, error, stackTrace) {
-                            return const Icon(Icons.shield_outlined, size: 18, color: GuruTheme.sand);
-                          },
+                          errorBuilder: (_, __, ___) =>
+                              const Icon(Icons.shield_outlined, size: 18, color: GuruTheme.sand),
                         ),
                         const SizedBox(width: 8),
                         Text(
@@ -169,13 +297,9 @@ class _TopBar extends StatelessWidget {
                     foregroundColor: GuruTheme.sand,
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     minimumSize: const Size(44, 28),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
                   onPressed: state.toggleLanguage,
-                  child: Text(
-                    s.langToggle,
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
-                  ),
+                  child: Text(s.langToggle, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
                 ),
                 const SizedBox(width: 6),
               ],

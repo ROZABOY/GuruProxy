@@ -1,9 +1,11 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'fronting_dial.dart';
+import 'protocol_catalog.dart';
 
 class SettingsStore extends ChangeNotifier {
   SettingsStore._(this._prefs);
@@ -100,6 +102,55 @@ class SettingsStore extends ChangeNotifier {
     _prefs.setString('protocolMode', v);
     notifyListeners();
   }
+
+  /// When true, platform picks protocols (mobile ≠ Windows CDN set).
+  bool get autoProtocol {
+    if (_prefs.containsKey('autoProtocol')) {
+      return _prefs.getBool('autoProtocol') ?? true;
+    }
+    // Fresh installs: auto on phones, manual CDN set on desktop.
+    return Platform.isAndroid || Platform.isIOS;
+  }
+
+  set autoProtocol(bool v) {
+    _prefs.setBool('autoProtocol', v);
+    notifyListeners();
+  }
+
+  List<String> get enabledProtocols {
+    final raw = _prefs.getString('enabledProtocolsJson');
+    if (raw == null || raw.isEmpty) {
+      return ProtocolCatalog.desktopCdnDefaults();
+    }
+    try {
+      return (jsonDecode(raw) as List).map((e) => e.toString()).toList();
+    } catch (_) {
+      return ProtocolCatalog.desktopCdnDefaults();
+    }
+  }
+
+  set enabledProtocols(List<String> ids) {
+    final known = ProtocolCatalog.options.map((o) => o.id).toSet();
+    final selected = ids.where(known.contains).toList();
+    _prefs.setString('enabledProtocolsJson', jsonEncode(selected));
+    notifyListeners();
+  }
+
+  void setProtocolEnabled(String id, bool on) {
+    final set = enabledProtocols.toSet();
+    if (on) {
+      set.add(id);
+    } else {
+      set.remove(id);
+    }
+    enabledProtocols = set.toList();
+  }
+
+  List<String> resolveTunnelProtocols() => ProtocolCatalog.resolve(
+        autoProtocol: autoProtocol,
+        enabled: enabledProtocols,
+        protocolMode: protocolMode,
+      );
 
   String get egressRegion {
     final v = _prefs.getString('egressRegion');

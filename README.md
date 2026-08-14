@@ -1,34 +1,20 @@
-# GuruProxy v2
+# GuruProxy v2.4 — app-focused
 
-Flutter desktop/mobile client for CDN-fronted Psiphon tunneling.
+Mobile-first Flutter client (Android / iOS UI + Windows desktop still supported).
 
-Local folder name on developer machines may be `GuruProxy_v2`; this repository
-and all releases are versioned from **v2** onward (`v2.0.0`, `v2.0.1`, …).
-
-## Requirements
-- Flutter 3.12+
-- Windows (tunnel process today); Android/iOS UI scaffolding later
-- Network credentials in `%LOCALAPPDATA%\GuruProxy\network_config.json`
-  (imported from official Psiphon / legacy PsiphonUI if present)
+See [CHANGELOG.md](CHANGELOG.md).
 
 ## Run
-```bat
+
+```bash
+cd GuruProxy_v2.4_app_focused
 flutter pub get
-flutter run -d windows
+flutter run   # phone or emulator
 ```
 
-Release:
-```bat
-flutter build windows --release
-```
+## Highlights
 
-## Bundled tunnel binary
-Place `psiphon-tunnel-core.exe` and `server_entries.txt` under `assets/bin/`
-locally (not committed). Without them, Connect cannot start the tunnel.
-
-## CDN preference
-Default dial order: **Cloudflare → Google → Akamai**.
-
-## License
-UI © GuruProxy authors. Tunnel engine is Psiphon tunnel-core (GPLv3).
-Thanks to the Psiphon team.
+- Safe-area AppBar + bottom tabs (no overlap with camera / nav buttons)
+- Status panel under the connect button on phones
+- Ongoing session notification with speeds + **Stop**
+- Auto-protocol + per-protocol checkboxes (mobile vs Windows defaults)
