@@ -27,7 +27,7 @@ x_run_here_x/**/*.dll
 x_run_here_x/**/*.dat
 x_run_here_x/**/*.so
 x_run_here_x/GuruProxy-*-windows/
-x-run_here/
+x-run-here/
 
 # OS
 Thumbs.db

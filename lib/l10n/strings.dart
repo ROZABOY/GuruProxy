@@ -2,7 +2,7 @@ class S {
   S(this.fa);
   final bool fa;
 
-  String get appName => 'GuruProxy v2.5.0';
+  String get appName => 'GuruProxy v2.6.0';
   String get menuConnect => fa ? 'اتصال' : 'Connect';
   String get menuSession => fa ? 'نشست' : 'Session';
   String get menuWhiteIp => fa ? 'اسکنر IP' : 'White IP';
@@ -28,8 +28,41 @@ class S {
   String get autoProtocol => fa ? 'پروتکل خودکار (موبایل/دسکتاپ)' : 'Auto-protocol (mobile/desktop)';
   String get autoProtocolOn => fa ? 'خودکار (بهینه پلتفرم)' : 'Auto (platform-optimized)';
   String get autoProtocolHint => fa
-      ? 'روشن: اندروید/iOS اولویت QUIC و Meek؛ ویندوز مجموعه CDN+OSSH سِون. خاموش: فقط چک‌باکس‌های زیر.'
-      : 'On: Android/iOS prefer QUIC + Meek; Windows uses CDN + OSSH fronting. Off: only the checkboxes below.';
+      ? 'روشن: اندروید مجموعه امن موبایل؛ ویندوز CDN/OSSH. خاموش: فقط چک‌باکس‌ها.'
+      : 'On: Android uses the safe mobile set; Windows uses CDN/OSSH. Off: checkboxes only.';
+  String get vpnSystem => fa ? 'VPN سراسری (اندروید)' : 'System VPN (Android)';
+  String get vpnSystemHint => fa
+      ? 'VpnService: همه/بعضی اپ‌ها از تونل عبور می‌کنند. خاموش = فقط SOCKS/HTTP محلی.'
+      : 'VpnService: route all/selected apps. Off = local SOCKS/HTTP only.';
+  String get vpnAppsTitle => fa ? 'اپ‌های VPN' : 'VPN apps';
+  String get vpnAppsHintAndroid => fa
+      ? 'all = همه اپ‌ها · exclude = این‌ها از VPN خارج · include = فقط این‌ها داخل VPN.'
+      : 'all = every app · exclude = these bypass VPN · include = only these use VPN.';
+  String get vpnAppsHintDesktop => fa
+      ? 'روی ویندوز فیلتر process با SOCKS ممکن نیست؛ لیست exe برای تنظیم دستی/آینده ذخیره می‌شود.'
+      : 'Windows SOCKS cannot filter by process; exe list is saved for manual/future TUN use.';
+  String get vpnAppMode => fa ? 'حالت اپ‌ها' : 'App mode';
+  String get vpnModeAll => fa ? 'همه اپ‌ها' : 'All apps';
+  String get vpnModeExclude => fa ? 'به‌جز این اپ‌ها' : 'Exclude selected';
+  String get vpnModeInclude => fa ? 'فقط این اپ‌ها' : 'Include selected only';
+  String get searchApps => fa ? 'جستجوی اپ' : 'Search apps';
+  String get menuApps => fa ? 'اپ‌ها' : 'Apps';
+  String get iranIsp => fa ? 'اپراتور ایران' : 'Iran ISP';
+  String get protocolModeCensored => fa ? 'سانسور شده (CDN Fronting)' : 'Censored net (CDN Fronting)';
+  String get protocolModeOpen => fa ? 'شبکه باز (OSSH/QUIC)' : 'Open net (OSSH/QUIC)';
+  String get protocolModeAuto => fa ? 'خودکار / ترکیبی' : 'Auto / mixed';
+  String get meekHealth => fa ? 'سلامت Meek قبل از دیال' : 'Meek health-check before dial';
+  String get meekHealthHint => fa
+      ? 'TLS-ok کافی نیست؛ 403/404 معمولاً فرانت Psiphon نیست.'
+      : 'TLS-ok is not enough; 403/404 usually means not a Psiphon front.';
+  String get refreshServerList => fa ? 'تازه‌سازی فهرست سرور' : 'Refresh server list';
+  String get exportDiagnostics => fa ? 'خروجی تشخیصی' : 'Export diagnostics';
+  String get diagnosticsShared => fa ? 'تشخیصی آماده شد' : 'Diagnostics ready';
+  String get preferHttp2Fronting =>
+      fa ? 'فرانتینگ HTTP/2 (آینده gRPC/مهسا)' : 'HTTP/2 fronting (future gRPC/Mahsa)';
+  String get preferHttp2FrontingHint => fa
+      ? 'پروتکل gRPC جدا نیست؛ برای ادغام بعدی مهساVpn نگه داشته شده.'
+      : 'Not a native gRPC tunnel — kept as a hook for future MahsaVPN features.';
   String get protocolChecksHint => fa
       ? 'هر پروتکل را جدا روشن/خاموش کنید. روی موبایل معمولاً QUIC و Unfronted بهترند.'
       : 'Toggle each protocol. On phones, QUIC and Unfronted Meek often work better.';
@@ -76,11 +109,6 @@ class S {
   String get beastModeHint => fa
       ? 'AggressiveEstablishment — اتصال تهاجمی‌تر، مصرف بیشتر.'
       : 'AggressiveEstablishment — more aggressive dialing, higher load.';
-  String get preferHttp2Fronting =>
-      fa ? 'فرانتینگ HTTP/2 (دوستدار gRPC)' : 'HTTP/2 fronting (gRPC-friendly)';
-  String get preferHttp2FrontingHint => fa
-      ? 'پروتکل gRPC جدا در تونل نیست. اولویت با Fronted Meek HTTP برای ترافیک شبیه HTTP/2/gRPC.'
-      : 'No native gRPC tunnel protocol. Prefers Fronted Meek HTTP for HTTP/2 / gRPC-like traffic.';
   String get upstreamProxy => fa ? 'پروکسی بالادستی' : 'Upstream proxy';
   String get upstreamUrl => fa ? 'آدرس پروکسی' : 'Proxy URL';
   String get upstreamUser => fa ? 'نام کاربری' : 'Username';
@@ -129,8 +157,8 @@ class S {
   String get helpTitle => fa ? 'راهنمای GuruProxy' : 'GuruProxy Help';
   String get aboutTitle => fa ? 'درباره GuruProxy' : 'About GuruProxy';
   String get tagline => fa
-      ? 'پروکسی CDN — خط gPRC / HTTP/2 · v2.5'
-      : 'CDN-fronted proxy — gPRC / HTTP/2 line · v2.5';
+      ? 'پروکسی CDN — VPN / ISP / health · v2.6'
+      : 'CDN-fronted proxy — VPN / ISP / health · v2.6';
 
   String get aboutBody => fa
       ? 'GuruProxy یک کلاینت مستقل CDN-fronting است. رابط و برندینگ متعلق به GuruProxy است.\n\nبا سپاس از تیم Psiphon برای tunnel-core و اکوسیستم circumvention.'

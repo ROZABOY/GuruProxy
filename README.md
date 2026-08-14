@@ -1,24 +1,20 @@
-# GuruProxy v2.5 — gPRC / HTTP/2 fronting
+# GuruProxy v2.6 — new features
 
-Folder name: **`GuruProxy_v2.5_gPRC`** — keep this tree when comparing Windows vs Android across releases.
+Folder: **`GuruProxy_v2.6_newFeatures`**
 
-## Run locally
+## Highlights
+- Android system VPN + per-app include/exclude
+- Iran ISP presets, Meek health-check, server list refresh
+- Clear censored vs open protocol modes
+- Export diagnostics
+- Dual artifacts every release (`x_run_here_x` + GitHub)
 
+## Build
 ```bash
-cd GuruProxy_v2.5_gPRC
+cd GuruProxy_v2.6_newFeatures
 flutter pub get
-flutter run -d windows
-# or
-flutter run -d <android-device>
+flutter build apk --release
+flutter build windows --release
 ```
 
-Release builds land in `x_run_here_x/`:
-
-- `GuruProxy-v2.5.0-android.apk`
-- `GuruProxy-v2.5.0-windows/` (+ zip)
-
-## Notes
-
-- Requires private `assets/bin/network_config.json` + `server_entries.txt` (gitignored).
-- Optional Settings → **HTTP/2 fronting (gRPC-friendly)**.
-- GitHub: https://github.com/ROZABOY/GuruProxy/releases
+gRPC / MahsaVPN integration remains a future hook (HTTP/2 preference setting).

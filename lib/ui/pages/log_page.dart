@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../app_state.dart';
 import '../../l10n/strings.dart';
+import '../../services/diagnostics_export.dart';
 import '../../theme/guru_theme.dart';
 
 class LogPage extends StatelessWidget {
@@ -24,6 +25,19 @@ class LogPage extends StatelessWidget {
             children: [
               Text(s.menuLog, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
               const Spacer(),
+              TextButton(
+                onPressed: lines.isEmpty
+                    ? null
+                    : () async {
+                        await DiagnosticsExport.shareSession(state.tunnel);
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(s.diagnosticsShared)),
+                          );
+                        }
+                      },
+                child: Text(s.exportDiagnostics),
+              ),
               TextButton(
                 onPressed: lines.isEmpty
                     ? null

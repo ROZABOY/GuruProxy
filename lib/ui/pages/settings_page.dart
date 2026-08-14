@@ -3,7 +3,9 @@ import 'package:provider/provider.dart';
 
 import '../../app_state.dart';
 import '../../l10n/strings.dart';
+import '../../services/iran_isp_presets.dart';
 import '../../services/protocol_catalog.dart';
+import '../../services/server_entries_refresh.dart';
 import '../../theme/guru_theme.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -71,16 +73,67 @@ class _SettingsPageState extends State<SettingsPage> {
         DropdownButtonFormField<String>(
           initialValue: settings.protocolMode,
           decoration: InputDecoration(labelText: s.mode, border: const OutlineInputBorder()),
-          items: const [
-            DropdownMenuItem(value: 'cdn_fronting', child: Text('CDN Fronting')),
-            DropdownMenuItem(value: 'direct', child: Text('Direct / mixed')),
-            DropdownMenuItem(value: 'auto', child: Text('Auto')),
+          items: [
+            DropdownMenuItem(value: 'cdn_fronting', child: Text(s.protocolModeCensored)),
+            DropdownMenuItem(value: 'direct', child: Text(s.protocolModeOpen)),
+            DropdownMenuItem(value: 'auto', child: Text(s.protocolModeAuto)),
           ],
           onChanged: (v) {
-            if (v != null) setState(() => settings.protocolMode = v);
+            if (v == null) return;
+            setState(() {
+              if (v == 'cdn_fronting') {
+                settings.applyCensoredNetMode();
+              } else if (v == 'direct') {
+                settings.applyOpenNetMode();
+              } else {
+                settings.protocolMode = v;
+              }
+            });
           },
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
+        DropdownButtonFormField<String>(
+          initialValue: settings.iranIspPresetId,
+          decoration: InputDecoration(labelText: s.iranIsp, border: const OutlineInputBorder()),
+          items: [
+            for (final p in IranIspPresets.all)
+              DropdownMenuItem(value: p.id, child: Text('${p.label}')),
+          ],
+          onChanged: (v) {
+            if (v == null) return;
+            setState(() => settings.applyIranIspPreset(v));
+          },
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text(s.vpnSystem),
+          subtitle: Text(s.vpnSystemHint, style: const TextStyle(fontSize: 11)),
+          value: settings.androidVpnMode,
+          activeThumbColor: GuruTheme.sand,
+          onChanged: (v) => setState(() => settings.androidVpnMode = v),
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text(s.meekHealth),
+          subtitle: Text(s.meekHealthHint, style: const TextStyle(fontSize: 11)),
+          value: settings.meekHealthCheckEnabled,
+          activeThumbColor: GuruTheme.sand,
+          onChanged: (v) => setState(() => settings.meekHealthCheckEnabled = v),
+        ),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: () async {
+              final msg = await ServerEntriesRefresh.refresh(context.read<AppState>().tunnel.bootstrap);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+              }
+            },
+            icon: const Icon(Icons.refresh, size: 18),
+            label: Text(s.refreshServerList),
+          ),
+        ),
+        const SizedBox(height: 8),
         Text(s.protocols, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,

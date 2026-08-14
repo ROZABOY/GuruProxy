@@ -1,6 +1,7 @@
 package com.guruproxy.guruproxy
 
 import android.Manifest
+import android.app.Activity
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -8,10 +9,14 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import android.net.VpnService
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -20,7 +25,6 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
-import android.util.Log
 import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
@@ -30,10 +34,12 @@ class MainActivity : FlutterActivity(), PsiphonTunnel.HostService {
         private const val NOTIF_CHANNEL = "guruproxy/session_notification"
         private const val TUNNEL_CHANNEL = "guruproxy/android_tunnel"
         private const val TUNNEL_EVENTS = "guruproxy/android_tunnel_events"
+        private const val APPS_CHANNEL = "guruproxy/installed_apps"
         private const val NOTIF_CHANNEL_ID = "guruproxy_session"
         private const val NOTIF_ID = 2401
         private const val ACTION_STOP = "com.guruproxy.guruproxy.ACTION_STOP"
         private const val REQ_POST_NOTIF = 2402
+        private const val REQ_VPN = 2602
         private const val TAG = "GuruProxy"
     }
 
@@ -47,6 +53,8 @@ class MainActivity : FlutterActivity(), PsiphonTunnel.HostService {
     private val httpPort = AtomicInteger(0)
     private val socksPort = AtomicInteger(0)
     private val mainHandler = Handler(Looper.getMainLooper())
+    private var pendingVpnResult: MethodChannel.Result? = null
+    private var sessionWakeLock: PowerManager.WakeLock? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -58,8 +66,6 @@ class MainActivity : FlutterActivity(), PsiphonTunnel.HostService {
                 "init" -> {
                     ensureNotifChannel()
                     registerStopReceiver()
-                    // Do not request POST_NOTIFICATIONS here — it blocks the UI
-                    // before the user can connect. Request on first show().
                     result.success(null)
                 }
                 "show" -> {
@@ -77,6 +83,25 @@ class MainActivity : FlutterActivity(), PsiphonTunnel.HostService {
             }
         }
 
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, APPS_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "listLaunchable" -> {
+                        Thread {
+                            try {
+                                val list = listLaunchableApps()
+                                mainHandler.post { result.success(list) }
+                            } catch (e: Exception) {
+                                mainHandler.post {
+                                    result.error("apps_failed", e.message, null)
+                                }
+                            }
+                        }.start()
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
         tunnelChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, TUNNEL_CHANNEL)
         tunnelChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
@@ -87,29 +112,14 @@ class MainActivity : FlutterActivity(), PsiphonTunnel.HostService {
                         return@setMethodCallHandler
                     }
                     configJson = cfg
-                    // Read server list from disk — content is ~1MB+ and exceeds Binder limits.
                     val path = call.argument<String>("serverEntriesPath")
-                    embeddedServerEntries = try {
-                        if (!path.isNullOrBlank()) {
-                            val f = File(path)
-                            if (f.isFile) {
-                                Log.i(TAG, "Loading server entries from ${f.length()} bytes")
-                                f.readText()
-                            } else {
-                                Log.w(TAG, "serverEntriesPath missing: $path")
-                                ""
-                            }
-                        } else {
-                            Log.w(TAG, "No serverEntriesPath — relying on remote list only")
-                            ""
-                        }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Failed reading server entries: ${e.message}")
-                        ""
-                    }
+                    embeddedServerEntries = loadServerEntries(path)
                     Thread {
                         try {
+                            acquireSessionWakeLock()
                             psiphonTunnel?.stop()
+                            // Keep Psiphon in proxy mode; whole-device routing is TUN→SOCKS via GuruProxyVpnService.
+                            psiphonTunnel?.setVpnMode(false)
                             psiphonTunnel?.startTunneling(embeddedServerEntries)
                             mainHandler.post { result.success(null) }
                         } catch (e: Exception) {
@@ -123,7 +133,9 @@ class MainActivity : FlutterActivity(), PsiphonTunnel.HostService {
                 "stop" -> {
                     Thread {
                         try {
+                            stopVpnService()
                             psiphonTunnel?.stop()
+                            releaseSessionWakeLock()
                             mainHandler.post { result.success(null) }
                         } catch (e: Exception) {
                             mainHandler.post {
@@ -132,6 +144,33 @@ class MainActivity : FlutterActivity(), PsiphonTunnel.HostService {
                         }
                     }.start()
                 }
+                "prepareVpn" -> {
+                    val prep = VpnService.prepare(this)
+                    if (prep != null) {
+                        pendingVpnResult = result
+                        startActivityForResult(prep, REQ_VPN)
+                    } else {
+                        result.success(true)
+                    }
+                }
+                "startVpnRouting" -> {
+                    val socks = call.argument<Int>("socks") ?: socksPort.get()
+                    val mode = call.argument<String>("mode") ?: "all"
+                    val apps = call.argument<String>("apps") ?: ""
+                    val i = Intent(this, GuruProxyVpnService::class.java).apply {
+                        action = GuruProxyVpnService.ACTION_START
+                        putExtra(GuruProxyVpnService.EXTRA_SOCKS, socks)
+                        putExtra(GuruProxyVpnService.EXTRA_MODE, mode)
+                        putExtra(GuruProxyVpnService.EXTRA_APPS, apps)
+                    }
+                    ContextCompat.startForegroundService(this, i)
+                    result.success(null)
+                }
+                "stopVpnRouting" -> {
+                    stopVpnService()
+                    result.success(null)
+                }
+                "vpnRunning" -> result.success(GuruProxyVpnService.running)
                 else -> result.notImplemented()
             }
         }
@@ -148,27 +187,100 @@ class MainActivity : FlutterActivity(), PsiphonTunnel.HostService {
             })
     }
 
-    private fun emit(map: Map<String, Any?>) {
-        mainHandler.post {
-            eventSink?.success(map)
+    private fun loadServerEntries(path: String?): String {
+        return try {
+            if (!path.isNullOrBlank()) {
+                val f = File(path)
+                if (f.isFile) {
+                    Log.i(TAG, "Loading server entries from ${f.length()} bytes")
+                    f.readText()
+                } else {
+                    Log.w(TAG, "serverEntriesPath missing: $path")
+                    ""
+                }
+            } else {
+                Log.w(TAG, "No serverEntriesPath — relying on remote list only")
+                ""
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed reading server entries: ${e.message}")
+            ""
         }
     }
 
-    // ---- PsiphonTunnel.HostService ----
+    private fun stopVpnService() {
+        val i = Intent(this, GuruProxyVpnService::class.java).setAction(GuruProxyVpnService.ACTION_STOP)
+        try {
+            startService(i)
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun listLaunchableApps(): List<Map<String, Any?>> {
+        val pm = packageManager
+        val main = Intent(Intent.ACTION_MAIN, null).addCategory(Intent.CATEGORY_LAUNCHER)
+        val resolved = pm.queryIntentActivities(main, 0)
+        val out = ArrayList<Map<String, Any?>>()
+        val seen = HashSet<String>()
+        for (ri in resolved) {
+            val pkg = ri.activityInfo.packageName
+            if (!seen.add(pkg) || pkg == packageName) continue
+            val label = try {
+                ri.loadLabel(pm)?.toString() ?: pkg
+            } catch (_: Exception) {
+                pkg
+            }
+            val system = try {
+                val ai = pm.getApplicationInfo(pkg, 0)
+                (ai.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+            } catch (_: Exception) {
+                false
+            }
+            out.add(
+                mapOf(
+                    "package" to pkg,
+                    "label" to label,
+                    "system" to system,
+                ),
+            )
+        }
+        out.sortBy { (it["label"] as? String)?.lowercase() ?: "" }
+        return out
+    }
+
+    @Deprecated("Deprecated in Android")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQ_VPN) {
+            val ok = resultCode == Activity.RESULT_OK
+            pendingVpnResult?.success(ok)
+            pendingVpnResult = null
+        }
+    }
+
+    private fun emit(map: Map<String, Any?>) {
+        mainHandler.post { eventSink?.success(map) }
+    }
 
     override fun getContext(): Context = applicationContext
 
     override fun getPsiphonConfig(): String {
         return try {
-            // Ensure DataRootDirectory exists if present in JSON.
             val obj = JSONObject(configJson)
             if (obj.has("DataRootDirectory")) {
-                val root = obj.getString("DataRootDirectory")
-                java.io.File(root).mkdirs()
+                java.io.File(obj.getString("DataRootDirectory")).mkdirs()
             }
             obj.toString()
         } catch (_: Exception) {
             configJson
+        }
+    }
+
+    override fun bindToDevice(fileDescriptor: Long) {
+        // When system VPN is active, protect Psiphon sockets from the TUN loop.
+        val vpn = GuruProxyVpnService.instance ?: return
+        if (!vpn.protect(fileDescriptor.toInt())) {
+            throw IllegalStateException("VpnService.protect failed")
         }
     }
 
@@ -225,11 +337,8 @@ class MainActivity : FlutterActivity(), PsiphonTunnel.HostService {
     }
 
     override fun onHomepage(url: String?) {}
-
     override fun onClientUpgradeDownloaded(filename: String?) {}
-
     override fun onClientIsLatestVersion() {}
-
     override fun onUntunneledAddress(address: String?) {}
 
     override fun onBytesTransferred(sent: Long, received: Long) {
@@ -241,7 +350,6 @@ class MainActivity : FlutterActivity(), PsiphonTunnel.HostService {
     }
 
     override fun onStoppedWaitingForNetworkConnectivity() {}
-
     override fun onActiveAuthorizationIDs(authorizations: MutableList<String>?) {}
 
     override fun onExiting() {
@@ -249,10 +357,24 @@ class MainActivity : FlutterActivity(), PsiphonTunnel.HostService {
     }
 
     override fun onClientRegion(region: String?) {}
-
     override fun onClientAddress(address: String?) {}
 
-    // ---- notifications ----
+    private fun acquireSessionWakeLock() {
+        if (sessionWakeLock?.isHeld == true) return
+        val pm = getSystemService(POWER_SERVICE) as PowerManager
+        sessionWakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "GuruProxy:Session").apply {
+            setReferenceCounted(false)
+            acquire(4 * 60 * 60 * 1000L)
+        }
+    }
+
+    private fun releaseSessionWakeLock() {
+        try {
+            if (sessionWakeLock?.isHeld == true) sessionWakeLock?.release()
+        } catch (_: Exception) {
+        }
+        sessionWakeLock = null
+    }
 
     private fun maybeRequestNotificationPermission() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
@@ -283,7 +405,11 @@ class MainActivity : FlutterActivity(), PsiphonTunnel.HostService {
                 if (intent?.action == ACTION_STOP) {
                     notifChannel?.invokeMethod("stop", null)
                     NotificationManagerCompat.from(this@MainActivity).cancel(NOTIF_ID)
-                    Thread { psiphonTunnel?.stop() }.start()
+                    Thread {
+                        stopVpnService()
+                        psiphonTunnel?.stop()
+                        releaseSessionWakeLock()
+                    }.start()
                 }
             }
         }
@@ -329,7 +455,9 @@ class MainActivity : FlutterActivity(), PsiphonTunnel.HostService {
 
     override fun onDestroy() {
         try {
+            stopVpnService()
             psiphonTunnel?.stop()
+            releaseSessionWakeLock()
         } catch (_: Exception) {
         }
         stopReceiver?.let {

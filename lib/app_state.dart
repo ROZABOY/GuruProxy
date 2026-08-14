@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'services/settings_store.dart';
 import 'services/tunnel_engine.dart';
 
-enum AppSection { connect, whiteIp, settings, log, help, about }
+enum AppSection { connect, whiteIp, apps, settings, log, help, about }
 
 class AppState extends ChangeNotifier {
   AppState({required this.settings, required this.tunnel}) {

@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'fronting_dial.dart';
 import 'default_fronts.dart';
+import 'iran_isp_presets.dart';
 import 'protocol_catalog.dart';
 
 class SettingsStore extends ChangeNotifier {
@@ -230,11 +231,68 @@ class SettingsStore extends ChangeNotifier {
         preferHttp2Fronting: preferHttp2Fronting,
       );
 
-  /// Optional: bias toward HTTP-path Meek (best available stand-in for gRPC-friendly fronts).
-  /// Default on for v2.5 gPRC line.
+  /// Optional: bias toward HTTP-path Meek (future gRPC / MahsaVPN hook).
+  /// Default on for v2.5+ lines; not a native gRPC tunnel protocol.
   bool get preferHttp2Fronting => _prefs.getBool('preferHttp2Fronting') ?? true;
   set preferHttp2Fronting(bool v) {
     _prefs.setBool('preferHttp2Fronting', v);
+    notifyListeners();
+  }
+
+  /// Android whole-device VPN (VpnService). Off = local SOCKS/HTTP only.
+  bool get androidVpnMode => _prefs.getBool('androidVpnMode') ?? true;
+  set androidVpnMode(bool v) {
+    _prefs.setBool('androidVpnMode', v);
+    notifyListeners();
+  }
+
+  /// all | exclude | include
+  String get vpnAppMode {
+    final v = (_prefs.getString('vpnAppMode') ?? 'all').trim().toLowerCase();
+    if (v == 'exclude' || v == 'include') return v;
+    return 'all';
+  }
+
+  set vpnAppMode(String v) {
+    final n = switch (v.trim().toLowerCase()) {
+      'exclude' => 'exclude',
+      'include' => 'include',
+      _ => 'all',
+    };
+    _prefs.setString('vpnAppMode', n);
+    notifyListeners();
+  }
+
+  /// Android package names for include/exclude VPN routing.
+  List<String> get vpnAppPackages {
+    final raw = _prefs.getString('vpnAppPackagesJson');
+    if (raw == null || raw.isEmpty) return [];
+    try {
+      return (jsonDecode(raw) as List)
+          .map((e) => e.toString().trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  set vpnAppPackages(List<String> pkgs) {
+    final cleaned = pkgs.map((e) => e.trim()).where((e) => e.isNotEmpty).toSet().toList()
+      ..sort();
+    _prefs.setString('vpnAppPackagesJson', jsonEncode(cleaned));
+    notifyListeners();
+  }
+
+  String get iranIspPresetId => _prefs.getString('iranIspPresetId') ?? 'mixed';
+  set iranIspPresetId(String v) {
+    _prefs.setString('iranIspPresetId', v.trim());
+    notifyListeners();
+  }
+
+  bool get meekHealthCheckEnabled => _prefs.getBool('meekHealthCheckEnabled') ?? true;
+  set meekHealthCheckEnabled(bool v) {
+    _prefs.setBool('meekHealthCheckEnabled', v);
     notifyListeners();
   }
 
@@ -447,17 +505,46 @@ class SettingsStore extends ChangeNotifier {
   }
 
   void applyIranQuickConnect() {
+    applyIranIspPreset(iranIspPresetId.isEmpty ? 'mixed' : iranIspPresetId);
+  }
+
+  void applyIranIspPreset(String presetId) {
+    final preset = IranIspPresets.byId(presetId) ?? IranIspPresets.byId('mixed')!;
     protocolMode = 'cdn_fronting';
     egressRegion = 'auto';
     autoFindIpAndSni = true;
-    cdnProvider = 'cloudflare';
-    beastMode = false;
+    beastMode = true;
     upstreamProxyUrl = '';
-    // Keep known-working list if present; don't wipe user's CF whitelist.
-    if (customIps.trim().isEmpty) {
-      customSnis = 'www.cloudflare.com\ncdnjs.cloudflare.com';
-    }
     sniOverrideEnabled = true;
+    autoProtocol = true;
+    iranIspPresetId = preset.id;
+    cdnProvider = preset.provider;
+    customIps = preset.ips.join('\n');
+    customSnis = preset.snis.join('\n');
+    activeGroupName = 'iran-${preset.id}';
+    upsertIpGroup(IpGroup(
+      name: activeGroupName,
+      ips: customIps,
+      snis: customSnis,
+      provider: preset.provider,
+      keepDefaults: true,
+      entries: [
+        for (final ip in preset.ips)
+          IpEntry(ip: ip, latencyMs: 40, sni: preset.snis.isEmpty ? '' : preset.snis.first),
+      ],
+    ));
+  }
+
+  void applyCensoredNetMode() {
+    protocolMode = 'cdn_fronting';
+    autoProtocol = true;
+    beastMode = true;
+  }
+
+  void applyOpenNetMode() {
+    protocolMode = 'direct';
+    autoProtocol = true;
+    beastMode = false;
   }
 
   /// Build UpstreamProxyUrl for tunnel-core (empty if unset).

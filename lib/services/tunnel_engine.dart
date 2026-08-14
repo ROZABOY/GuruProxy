@@ -119,6 +119,28 @@ class TunnelEngine extends ChangeNotifier {
   StreamSubscription? _androidEvents;
   bool _androidRunning = false;
 
+  Future<void> _attachAndroidVpn() async {
+    try {
+      final bridge = AndroidTunnelBridge.instance;
+      final prepared = await bridge.prepareVpn();
+      if (!prepared) {
+        _append('VPN permission denied — using local SOCKS/HTTP only');
+        return;
+      }
+      final socks = socksPort > 0 ? socksPort : settings.localSocksPort;
+      await bridge.startVpnRouting(
+        socks: socks,
+        mode: settings.vpnAppMode,
+        apps: settings.vpnAppPackages,
+      );
+      _append('System VPN routing attached (mode=${settings.vpnAppMode})');
+      _note('VPN · system routing on');
+      notifyListeners();
+    } catch (e) {
+      _append('VPN attach failed: $e');
+    }
+  }
+
   Future<void> start() async {
     if (Platform.isAndroid) {
       await _startAndroid();
@@ -170,6 +192,13 @@ class TunnelEngine extends ChangeNotifier {
         );
       }
 
+      if (settings.androidVpnMode) {
+        final prepared = await AndroidTunnelBridge.instance.prepareVpn();
+        if (!prepared) {
+          _append('VPN permission not granted — continuing with local proxies only');
+        }
+      }
+
       final support = await NetworkCredentials.dataRoot();
       _workDir = Directory('${support.path}${Platform.pathSeparator}tunnel-core');
       await _workDir!.create(recursive: true);
@@ -198,8 +227,15 @@ class TunnelEngine extends ChangeNotifier {
       }
 
       _androidRunning = true;
-      await bridge.start(config, serverEntriesPath: serverEntriesPath);
+      await bridge.start(
+        config,
+        serverEntriesPath: serverEntriesPath,
+        vpnMode: settings.androidVpnMode,
+      );
       _append('Android Psiphon library start requested');
+      if (settings.androidVpnMode) {
+        _append('System VPN: will attach after tunnel connects');
+      }
       await _writeSmokeStatus('connecting');
 
       final timeoutSec = settings.establishTimeoutSec.clamp(30, 600);
@@ -239,6 +275,9 @@ class TunnelEngine extends ChangeNotifier {
       _note('Connected');
       _append('Connected (SOCKS=$socksPort HTTP=$httpPort)');
       unawaited(_writeSmokeStatus('connected socks=$socksPort http=$httpPort region=$connectedRegion'));
+      if (Platform.isAndroid && settings.androidVpnMode) {
+        unawaited(_attachAndroidVpn());
+      }
       notifyListeners();
       return;
     }
@@ -446,6 +485,9 @@ class TunnelEngine extends ChangeNotifier {
     if (Platform.isAndroid || _androidRunning) {
       state = TunnelState.disconnecting;
       notifyListeners();
+      try {
+        await AndroidTunnelBridge.instance.stopVpnRouting();
+      } catch (_) {}
       try {
         await AndroidTunnelBridge.instance.stop();
       } catch (_) {}

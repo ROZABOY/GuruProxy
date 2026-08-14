@@ -1,7 +1,7 @@
 name: guruproxy
-description: GuruProxy v2.5 gPRC — HTTP/2-friendly CDN-fronting client
+description: GuruProxy v2.6 — VPN, ISP presets, health-check, diagnostics
 publish_to: "none"
-version: 2.5.0+250
+version: 2.6.0+260
 
 environment:
   sdk: ^3.12.2

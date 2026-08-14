@@ -6,6 +6,7 @@ import '../app_state.dart';
 import '../l10n/strings.dart';
 import '../theme/guru_theme.dart';
 import 'pages/about_page.dart';
+import 'pages/apps_page.dart';
 import 'pages/connect_page.dart';
 import 'pages/help_page.dart';
 import 'pages/log_page.dart';
@@ -105,8 +106,9 @@ class AppShell extends StatelessWidget {
           onDestinationSelected: (i) {
             state.go(switch (i) {
               1 => AppSection.whiteIp,
-              2 => AppSection.settings,
-              3 => AppSection.log,
+              2 => AppSection.apps,
+              3 => AppSection.settings,
+              4 => AppSection.log,
               _ => AppSection.connect,
             });
           },
@@ -119,7 +121,12 @@ class AppShell extends StatelessWidget {
             NavigationDestination(
               icon: const Icon(Icons.travel_explore_outlined),
               selectedIcon: const Icon(Icons.travel_explore),
-              label: isFa ? 'White IP' : 'White IP',
+              label: 'White IP',
+            ),
+            NavigationDestination(
+              icon: const Icon(Icons.apps_outlined),
+              selectedIcon: const Icon(Icons.apps),
+              label: s.menuApps,
             ),
             NavigationDestination(
               icon: const Icon(Icons.tune_outlined),
@@ -157,14 +164,16 @@ class AppShell extends StatelessWidget {
 
   int _navIndex(AppSection section) => switch (section) {
         AppSection.whiteIp => 1,
-        AppSection.settings => 2,
-        AppSection.log => 3,
+        AppSection.apps => 2,
+        AppSection.settings => 3,
+        AppSection.log => 4,
         AppSection.help || AppSection.about || AppSection.connect => 0,
       };
 
   Widget _page(AppState state) => switch (state.section) {
         AppSection.connect => const ConnectPage(),
         AppSection.whiteIp => const WhiteIpPage(),
+        AppSection.apps => const AppsPage(),
         AppSection.settings => const SettingsPage(),
         AppSection.log => const LogPage(),
         AppSection.help => const HelpPage(),
@@ -264,6 +273,10 @@ class _DesktopTopBar extends StatelessWidget {
                           MenuItemButton(
                             onPressed: () => state.go(AppSection.whiteIp),
                             child: Text(s.menuWhiteIp),
+                          ),
+                          MenuItemButton(
+                            onPressed: () => state.go(AppSection.apps),
+                            child: Text(s.menuApps),
                           ),
                           MenuItemButton(
                             onPressed: () => state.go(AppSection.log),

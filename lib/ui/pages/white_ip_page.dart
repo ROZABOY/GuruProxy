@@ -11,6 +11,7 @@ import '../../app_state.dart';
 import '../../l10n/strings.dart';
 import '../../services/edge_scanner.dart';
 import '../../services/ip_list_csv.dart';
+import '../../services/meek_health_check.dart';
 import '../../services/settings_store.dart';
 import '../../theme/guru_theme.dart';
 
@@ -186,18 +187,47 @@ class _WhiteIpPageState extends State<WhiteIpPage> {
     );
   }
 
-  void _applyHealthy({required bool toGroup}) {
+  Future<void> _applyHealthy({required bool toGroup}) async {
     final state = context.read<AppState>();
-    final entries = _entriesFromHealthy();
+    var entries = _entriesFromHealthy();
     if (entries.isEmpty && _manualIps.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No IPs to apply.')));
       return;
     }
-    final useEntries = entries.isNotEmpty
+    var useEntries = entries.isNotEmpty
         ? entries
         : _manualIps
             .map((ip) => IpEntry(ip: ip, sni: _snis.isNotEmpty ? _snis.first : ''))
             .toList();
+
+    if (state.settings.meekHealthCheckEnabled && useEntries.isNotEmpty) {
+      final sni = (_snis.isNotEmpty
+              ? _snis.first
+              : (useEntries.first.sni.isNotEmpty ? useEntries.first.sni : 'www.cloudflare.com'))
+          .trim();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Meek health-check on ${useEntries.length} IPs…')),
+      );
+      final results = await MeekHealthCheck.probeMany(
+        ips: useEntries.map((e) => e.ip).toList(),
+        sni: sni,
+      );
+      final okIps = results.where((r) => r.ok).map((r) => r.ip).toSet();
+      useEntries = useEntries.where((e) => okIps.contains(e.ip)).toList();
+      if (!mounted) return;
+      if (useEntries.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No IPs passed Meek health-check (403/404 ≠ Psiphon front).'),
+          ),
+        );
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${useEntries.length} IPs passed Meek check')),
+      );
+    }
+
     final ipText = useEntries.map((e) => e.ip).join('\n');
     final snis = _sniOverride ? _snis.join('\n') : '';
 
@@ -225,14 +255,14 @@ class _WhiteIpPageState extends State<WhiteIpPage> {
         entries: useEntries,
       ));
       state.settings.activeGroupName = name;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Saved group â€œ$nameâ€ (speed-ordered).')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Saved group "$name" (speed-ordered).')));
     } else {
       state.settings.activeGroupName = state.settings.activeGroupName.isEmpty ? 'custom' : state.settings.activeGroupName;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Applied ${useEntries.length} Cloudflare IPs (fastest first). '
-            'Ping/TLS-ok â‰  guaranteed Psiphon front.',
+            'Applied ${useEntries.length} IPs (fastest first). '
+            'Ping/TLS-ok ≠ guaranteed Psiphon front.',
           ),
         ),
       );

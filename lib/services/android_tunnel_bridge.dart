@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
-/// Bridges Flutter ↔ Psiphon Android library (ca.psiphon).
+/// Bridges Flutter ↔ Psiphon Android library (ca.psiphon) + VpnService.
 class AndroidTunnelBridge {
   AndroidTunnelBridge._();
   static final AndroidTunnelBridge instance = AndroidTunnelBridge._();
@@ -27,11 +27,15 @@ class AndroidTunnelBridge {
     });
   }
 
-  /// [serverEntriesPath] is read on the Kotlin side (file can exceed Binder size limits).
-  Future<void> start(String configJson, {String? serverEntriesPath}) async {
+  Future<void> start(
+    String configJson, {
+    String? serverEntriesPath,
+    bool vpnMode = false,
+  }) async {
     await ensureListening();
     await _methods.invokeMethod<void>('start', {
       'config': configJson,
+      'vpnMode': vpnMode,
       if (serverEntriesPath != null && serverEntriesPath.isNotEmpty)
         'serverEntriesPath': serverEntriesPath,
     });
@@ -40,6 +44,35 @@ class AndroidTunnelBridge {
   Future<void> stop() async {
     if (!isSupported) return;
     await _methods.invokeMethod<void>('stop');
+  }
+
+  Future<bool> prepareVpn() async {
+    if (!isSupported) return false;
+    final ok = await _methods.invokeMethod<bool>('prepareVpn');
+    return ok == true;
+  }
+
+  Future<void> startVpnRouting({
+    required int socks,
+    required String mode,
+    required List<String> apps,
+  }) async {
+    if (!isSupported) return;
+    await _methods.invokeMethod<void>('startVpnRouting', {
+      'socks': socks,
+      'mode': mode,
+      'apps': apps.join(','),
+    });
+  }
+
+  Future<void> stopVpnRouting() async {
+    if (!isSupported) return;
+    await _methods.invokeMethod<void>('stopVpnRouting');
+  }
+
+  Future<bool> vpnRunning() async {
+    if (!isSupported) return false;
+    return await _methods.invokeMethod<bool>('vpnRunning') == true;
   }
 
   Future<void> dispose() async {

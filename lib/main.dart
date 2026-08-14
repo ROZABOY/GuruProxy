@@ -48,7 +48,7 @@ Future<void> main() async {
       minimumSize: Size(720, 480),
       center: true,
       backgroundColor: Colors.transparent,
-      title: 'GuruProxy v2.5.0',
+      title: 'GuruProxy v2.6.0',
       titleBarStyle: TitleBarStyle.normal,
     );
     await windowManager.setPreventClose(true);
@@ -104,7 +104,7 @@ class GuruProxyApp extends StatelessWidget {
     final state = context.watch<AppState>();
     final isFa = state.locale.languageCode == 'fa';
     return MaterialApp(
-      title: 'GuruProxy v2.5.0',
+      title: 'GuruProxy v2.6.0',
       debugShowCheckedModeBanner: false,
       locale: state.locale,
       theme: GuruTheme.light,
