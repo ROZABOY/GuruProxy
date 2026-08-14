@@ -2,7 +2,7 @@ class S {
   S(this.fa);
   final bool fa;
 
-  String get appName => 'GuruProxy v2.4.2';
+  String get appName => 'GuruProxy v2.4.3';
   String get menuConnect => fa ? 'اتصال' : 'Connect';
   String get menuSession => fa ? 'نشست' : 'Session';
   String get menuWhiteIp => fa ? 'اسکنر IP' : 'White IP';
@@ -29,7 +29,7 @@ class S {
   String get autoProtocolOn => fa ? 'خودکار (بهینه پلتفرم)' : 'Auto (platform-optimized)';
   String get autoProtocolHint => fa
       ? 'روشن: اندروید/iOS اولویت QUIC و Meek؛ ویندوز مجموعه CDN+OSSH سِون. خاموش: فقط چک‌باکس‌های زیر.'
-      : 'On: Android/iOS prefer QUIC + Meek; Windows keeps Se7en CDN+OSSH. Off: only the checkboxes below.';
+      : 'On: Android/iOS prefer QUIC + Meek; Windows uses CDN + OSSH fronting. Off: only the checkboxes below.';
   String get protocolChecksHint => fa
       ? 'هر پروتکل را جدا روشن/خاموش کنید. روی موبایل معمولاً QUIC و Unfronted بهترند.'
       : 'Toggle each protocol. On phones, QUIC and Unfronted Meek often work better.';
@@ -89,8 +89,8 @@ class S {
   String get blockedApps => fa ? 'Exclude apps (bypass proxy)' : 'Exclude apps (bypass proxy)';
   String get blockedAppsList => fa ? 'Exe names (one per line)' : 'Exe names (one per line)';
   String get blockedAppsHint => fa
-      ? 'مثل Se7en: با SOCKS/HTTP محلی فیلتر process ممکن نیست. لیست ذخیره می‌شود. برنامه‌هایی که به پروکسی وصل نشوند از آن استفاده نمی‌کنند. برای فیلتر واقعی به TUN نیاز است.'
-      : 'Same as Se7en: plain SOCKS/HTTP cannot filter by process. List is saved. Apps only use the proxy if pointed at it. Real process bypass needs TUN.';
+      ? 'با SOCKS/HTTP محلی فیلتر process ممکن نیست. لیست ذخیره می‌شود. برنامه‌هایی که به پروکسی وصل نشوند از آن استفاده نمی‌کنند. برای فیلتر واقعی به TUN نیاز است.'
+      : 'Plain SOCKS/HTTP cannot filter by process. List is saved. Apps only use the proxy if pointed at it. Real process bypass needs TUN.';
   String get copyLog => fa ? 'کپی لاگ' : 'Copy log';
   String get logCopied => fa ? 'لاگ کپی شد' : 'Log copied';
   String get sortBySpeed => fa ? 'مرتب‌سازی سرعت' : 'Sort by speed';
@@ -128,8 +128,8 @@ class S {
       : 'CDN-fronted proxy — app-focused mobile build';
 
   String get aboutBody => fa
-      ? 'GuruProxy v2.4 (app-focused): رابط موبایل با نوتیفیکیشن نشست، Stop سریع، و پروتکل‌های قابل انتخاب. هسته تونل فعلاً روی ویندوز کامل است؛ UI اندروید/iOS آمادهٔ بک‌اند موبایل است.\n\nبا سپاس از تیم Psiphon برای tunnel-core.'
-      : 'GuruProxy v2.4 (app-focused): mobile UI with session notification, Stop action, and selectable protocols. Tunnel core is Windows-complete today; Android/iOS UI is ready for a mobile backend.\n\nThanks to the Psiphon team for tunnel-core.';
+      ? 'GuruProxy یک کلاینت مستقل CDN-fronting است. رابط و برندینگ متعلق به GuruProxy است.\n\nبا سپاس از تیم Psiphon برای tunnel-core و اکوسیستم circumvention.'
+      : 'GuruProxy is an independent CDN-fronting client. UI and branding belong to GuruProxy.\n\nThanks to the Psiphon team for tunnel-core and the circumvention ecosystem.';
 
   String get helpCdn => fa
       ? 'حالت CDN Fronting ترافیک را از لبه‌های CDN (مثل Akamai) عبور می‌دهد. پروکسی سیستم نادیده گرفته می‌شود. خطای 403 یعنی IP فقط TLS دارد ولی فرانت Psiphon نیست — Iran Quick یا گروه Akamai با Keep defaults را امتحان کنید.'

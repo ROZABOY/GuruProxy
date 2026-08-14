@@ -1,16 +1,16 @@
 # GuruProxy Changelog
 
-## v2.4.2 — connect fix + icon + signed APK (2026-08-14)
+## v2.4.3 — identity + connect hard-fix (2026-08-14)
 
-- **Fix crash:** invalid protocols `UNFRONTED-MEEK-HTTPS` / `SESSION-TICKET` → correct `-OSSH` names; strip `FRONTED-MEEK-CDN-OSSH` on Android (not in library).
-- **Launcher icon:** brand shield from `assets/brand/app-icon.png` (no Flutter default).
-- **Release signing key:** APK signed with GuruProxy release keystore (still sideload warning from Android for non-Play installs — normal).
-- **Default fronts:** Cloudflare + Google (`216.239.38.120` / `www.google.com`) + Akamai + Fastly (+ extras) so dial list is never empty.
+- Removed every user-facing **Se7en/Se7ven** mention (UI, settings, logs). About page only thanks **Psiphon**.
+- **Hard protocol allow-list** before Start: invalid names like `UNFRONTED-MEEK-HTTPS` are rewritten/dropped; Android cannot start with a bad list anymore.
+- Forced Auto-protocol refresh on phones (schema 10).
+- Brand icon + release signing retained from 2.4.2.
 
-## v2.4.1
+## v2.4.2
 
-- White IP mobile layout; Android Psiphon library; SnackBars.
+- Protocol `-OSSH` rename attempt, icon, signing, multi-CDN defaults.
 
-## v2.4.0
+## v2.4.1 / v2.4.0
 
-- App-focused mobile shell, notification, protocol checkboxes.
+- Mobile shell, Psiphon Android library, White IP layout.

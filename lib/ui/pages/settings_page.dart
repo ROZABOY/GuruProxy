@@ -327,7 +327,7 @@ class _SettingsPageState extends State<SettingsPage> {
             labelText: s.blockedAppsList,
             hintText: 'photoshop.exe\ncoreldraw.exe\nsteam.exe',
             border: const OutlineInputBorder(),
-            helperText: 'Saved exclude list (SOCKS cannot force it — same limit as Se7en)',
+            helperText: 'Saved exclude list (SOCKS cannot force process bypass without TUN)',
             helperMaxLines: 2,
           ),
         ),

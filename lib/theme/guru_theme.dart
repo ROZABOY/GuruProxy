@@ -1,6 +1,6 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
-/// Compact, modern palette — not Se7en's purple Material shell.
+/// Compact, modern palette â€” not CDN's purple Material shell.
 class GuruTheme {
   static const teal = Color(0xFF0B4F5C);
   static const tealDeep = Color(0xFF073840);

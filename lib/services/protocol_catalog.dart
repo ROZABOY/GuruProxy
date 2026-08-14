@@ -17,32 +17,40 @@ class ProtocolOption {
   final String hint;
   final bool mobilePreferred;
   final bool desktopCdnDefault;
-  /// False for protocols only the Windows Se7en binary accepts (e.g. CDN-OSSH).
   final bool androidSupported;
 }
 
 class ProtocolCatalog {
   ProtocolCatalog._();
 
-  /// Rename legacy checkbox IDs that crash Android library validation.
+  /// Absolute allow-list for Android Psiphon library (v2.0.x).
+  static const androidAllowList = <String>{
+    'SSH',
+    'OSSH',
+    'TLS-OSSH',
+    'QUIC-OSSH',
+    'FRONTED-MEEK-OSSH',
+    'FRONTED-MEEK-HTTP-OSSH',
+    'FRONTED-MEEK-QUIC-OSSH',
+    'UNFRONTED-MEEK-OSSH',
+    'UNFRONTED-MEEK-HTTPS-OSSH',
+    'UNFRONTED-MEEK-SESSION-TICKET-OSSH',
+    'SHADOWSOCKS-OSSH',
+    'CONJURE-OSSH',
+  };
+
   static const aliases = <String, String>{
     'UNFRONTED-MEEK-HTTPS': 'UNFRONTED-MEEK-HTTPS-OSSH',
     'UNFRONTED-MEEK-SESSION-TICKET': 'UNFRONTED-MEEK-SESSION-TICKET-OSSH',
     'UNFRONTED-MEEK': 'UNFRONTED-MEEK-OSSH',
+    'FRONTED-MEEK-CDN-OSSH': 'FRONTED-MEEK-OSSH', // CDN-OSSH not in Android library
   };
 
   static const options = <ProtocolOption>[
     ProtocolOption(
-      id: 'FRONTED-MEEK-CDN-OSSH',
-      label: 'Fronted Meek CDN + OSSH',
-      hint: 'Se7en Windows staple — not in Android library',
-      desktopCdnDefault: true,
-      androidSupported: false,
-    ),
-    ProtocolOption(
       id: 'FRONTED-MEEK-OSSH',
       label: 'Fronted Meek + OSSH',
-      hint: 'Classic fronted Meek',
+      hint: 'Classic CDN-fronted Meek',
       mobilePreferred: true,
       desktopCdnDefault: true,
     ),
@@ -106,7 +114,6 @@ class ProtocolCatalog {
     'FRONTED-MEEK-QUIC-OSSH',
     'FRONTED-MEEK-HTTP-OSSH',
     'FRONTED-MEEK-OSSH',
-    'FRONTED-MEEK-CDN-OSSH',
     'UNFRONTED-MEEK-HTTPS-OSSH',
     'UNFRONTED-MEEK-SESSION-TICKET-OSSH',
     'UNFRONTED-MEEK-OSSH',
@@ -116,26 +123,39 @@ class ProtocolCatalog {
     'SSH',
   ];
 
-  static String canonicalize(String id) => aliases[id] ?? id;
+  static String canonicalize(String id) => aliases[id.trim()] ?? id.trim();
+
+  /// Never returns a protocol that will fail Validate() on Android.
+  static List<String> sanitizeForStart(List<String> raw, {required bool android}) {
+    final out = <String>[];
+    final seen = <String>{};
+    for (final id in raw) {
+      final c = canonicalize(id);
+      if (c.isEmpty || !seen.add(c)) continue;
+      if (android && !androidAllowList.contains(c)) continue;
+      out.add(c);
+    }
+    if (out.isEmpty) {
+      return android ? List<String>.from(mobileAutoDefaults()) : desktopCdnDefaults();
+    }
+    return _sorted(out);
+  }
 
   static List<String> desktopCdnDefaults() =>
       options.where((o) => o.desktopCdnDefault).map((o) => o.id).toList();
 
-  static List<String> mobileAutoDefaults() {
-    // Prefer fronted Meek first (matches Se7en CDN path), then unfronted + QUIC.
-    return _forPlatform(_sorted([
-      'FRONTED-MEEK-QUIC-OSSH',
-      'FRONTED-MEEK-HTTP-OSSH',
-      'FRONTED-MEEK-OSSH',
-      'UNFRONTED-MEEK-HTTPS-OSSH',
-      'UNFRONTED-MEEK-SESSION-TICKET-OSSH',
-      'UNFRONTED-MEEK-OSSH',
-      'QUIC-OSSH',
-      'OSSH',
-    ]));
-  }
+  static List<String> mobileAutoDefaults() => _sorted(const [
+        'FRONTED-MEEK-QUIC-OSSH',
+        'FRONTED-MEEK-HTTP-OSSH',
+        'FRONTED-MEEK-OSSH',
+        'UNFRONTED-MEEK-HTTPS-OSSH',
+        'UNFRONTED-MEEK-SESSION-TICKET-OSSH',
+        'UNFRONTED-MEEK-OSSH',
+        'QUIC-OSSH',
+        'OSSH',
+      ]);
 
-  static List<String> directDefaults() => _forPlatform(const [
+  static List<String> directDefaults() => sanitizeForStart(const [
         'QUIC-OSSH',
         'OSSH',
         'TLS-OSSH',
@@ -143,34 +163,32 @@ class ProtocolCatalog {
         'FRONTED-MEEK-QUIC-OSSH',
         'FRONTED-MEEK-OSSH',
         'UNFRONTED-MEEK-HTTPS-OSSH',
-      ]);
+      ], android: Platform.isAndroid || Platform.isIOS);
 
   static List<String> resolve({
     required bool autoProtocol,
     required List<String> enabled,
     required String protocolMode,
   }) {
+    final android = Platform.isAndroid || Platform.isIOS;
+    List<String> raw;
     if (autoProtocol) {
-      final mobile = Platform.isAndroid || Platform.isIOS;
-      if (mobile) return mobileAutoDefaults();
-      if (protocolMode == 'cdn_fronting') return desktopCdnDefaults();
-      if (protocolMode == 'direct') return directDefaults();
-      return _forPlatform(_sorted({...desktopCdnDefaults(), ...directDefaults()}.toList()));
+      if (android) {
+        raw = mobileAutoDefaults();
+      } else if (protocolMode == 'cdn_fronting') {
+        raw = desktopCdnDefaults();
+      } else if (protocolMode == 'direct') {
+        raw = directDefaults();
+      } else {
+        raw = [...desktopCdnDefaults(), ...directDefaults()];
+      }
+    } else {
+      raw = enabled.map(canonicalize).where((id) => options.any((o) => o.id == id)).toList();
+      if (raw.isEmpty) {
+        return resolve(autoProtocol: true, enabled: const [], protocolMode: protocolMode);
+      }
     }
-
-    final picked = enabled.map(canonicalize).where((id) => options.any((o) => o.id == id)).toList();
-    if (picked.isEmpty) {
-      return resolve(autoProtocol: true, enabled: const [], protocolMode: protocolMode);
-    }
-    return _forPlatform(_sorted(picked));
-  }
-
-  static List<String> _forPlatform(List<String> ids) {
-    if (!(Platform.isAndroid || Platform.isIOS)) return ids;
-    final allowed = options.where((o) => o.androidSupported).map((o) => o.id).toSet();
-    final out = ids.where(allowed.contains).toList();
-    if (out.isEmpty) return mobileAutoDefaults();
-    return out;
+    return sanitizeForStart(raw, android: android);
   }
 
   static List<String> _sorted(List<String> ids) {

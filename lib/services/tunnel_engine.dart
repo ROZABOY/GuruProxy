@@ -9,6 +9,7 @@ import 'android_tunnel_bridge.dart';
 import 'egress_regions.dart';
 import 'fronting_dial.dart';
 import 'network_credentials.dart';
+import 'protocol_catalog.dart';
 import 'settings_store.dart';
 
 enum TunnelState { disconnected, connecting, connected, disconnecting, error }
@@ -329,7 +330,7 @@ class TunnelEngine extends ChangeNotifier {
       final socks = settings.localSocksPort;
       final http = settings.localHttpPort;
       if (socks == 8088 || http == 8089 || socks == 8089 || http == 8088) {
-        _append('Ports $socks/$http collide with Se7en Pro defaults — switching to 17888/17889.');
+        _append('Ports $socks/$http collide with reserved defaults — switching to 17888/17889.');
         settings.localSocksPort = 17888;
         settings.localHttpPort = 17889;
       }
@@ -755,7 +756,7 @@ class TunnelEngine extends ChangeNotifier {
       _append('Connection profile: normal');
     }
 
-    // Match Se7en ClientPlatform style on Windows; Android uses plain "Android".
+    // Windows ClientPlatform style; Android uses plain "Android".
     if (!forAndroid) {
       final osVer = Platform.operatingSystemVersion;
       final m = RegExp(r'(\d+\.\d+)').firstMatch(osVer);
@@ -790,7 +791,10 @@ class TunnelEngine extends ChangeNotifier {
       _append('Using upstream proxy: ${upstream.replaceAll(RegExp(r':[^:@/]+@'), ':***@')}');
     }
 
-    final protocols = settings.resolveTunnelProtocols();
+    final protocols = ProtocolCatalog.sanitizeForStart(
+      settings.resolveTunnelProtocols(),
+      android: forAndroid || Platform.isAndroid || Platform.isIOS,
+    );
     cfg['LimitTunnelProtocols'] = protocols;
     cfg['DisableTactics'] = true;
     _append(
@@ -798,43 +802,37 @@ class TunnelEngine extends ChangeNotifier {
     );
 
     if (mode == 'cdn_fronting') {
-      // Dial overrides still follow Se7en-identical catch-all edges.
-
-      // Se7en: when Auto, force US for CDN-dense exits.
+      // When Auto region, prefer US for CDN-dense exits.
       if (egress.isEmpty) {
         cfg['EgressRegion'] = 'US';
-        _append('Egress region: US (CDN Auto → US, same as Se7en)');
+        _append('Egress region: US (CDN Auto → US)');
         _note('Region · US (CDN)');
       }
 
-      // Always enable aggressive establish for CDN (Se7en beast path).
       cfg['AggressiveEstablishment'] = true;
       if (!settings.beastMode) {
-        _append('CDN: AggressiveEstablishment forced on (Se7en-compatible)');
+        _append('CDN: AggressiveEstablishment forced on');
       }
 
       final hasUserIps = settings.customIps.trim().isNotEmpty;
-      // Always merge Se7en Akamai catch-alls unless user explicitly CF-only.
       final includeDefaults = settings.autoFindIpAndSni || !hasUserIps;
       final sniOverride = settings.sniOverrideEnabled ? settings.customSnis : '';
-      // Default CDN provider for Se7en-compatible OSSH: still prefer CF list for
-      // Cloudflare dials, but Akamai catch-alls always use Akamai SNI.
       final preferred = FrontingDialBuilder.normalizeProvider(
         settings.cdnProvider.trim().isEmpty ? 'cloudflare' : settings.cdnProvider,
       );
 
-      _append('Dial overrides: Se7en-identical catch-all edges (.*)');
+      _append('Dial overrides: catch-all CDN edges (.*)');
       _append('Active whitelist group: ${settings.activeGroupName.isEmpty ? "(custom/none)" : settings.activeGroupName}');
-      _note('CDN · Se7en dials · ${settings.activeGroupName.isEmpty ? "-" : settings.activeGroupName}');
+      _note('CDN · dials · ${settings.activeGroupName.isEmpty ? "-" : settings.activeGroupName}');
       if (settings.sniOverrideEnabled && settings.customSnis.trim().isNotEmpty) {
         _append('SNI override on');
       }
       if (hasUserIps && !includeDefaults) {
-        _append('Custom IPs only (Auto-find off) — Se7en same rule.');
+        _append('Custom IPs only (Auto-find off).');
       } else if (hasUserIps) {
-        _append('Custom IPs as catch-all .* + Se7en Akamai edges (same as working Se7en).');
+        _append('Custom IPs as catch-all .* + built-in Akamai edges.');
       } else {
-        _append('Built-in Se7en Akamai edges only.');
+        _append('Built-in Akamai edges only.');
       }
 
       final overrides = FrontingDialBuilder.buildDialOverrides(
@@ -876,7 +874,7 @@ class TunnelEngine extends ChangeNotifier {
         'Exclude apps saved (${settings.blockedApps.length}): '
         '${settings.blockedApps.take(5).join(", ")}'
         '${settings.blockedApps.length > 5 ? "…" : ""}. '
-        'SOCKS/HTTP cannot force process bypass (same as Se7en without TUN).',
+        'SOCKS/HTTP cannot force process bypass without TUN.',
       );
     }
 

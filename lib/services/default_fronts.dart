@@ -22,7 +22,7 @@ class DefaultFronts {
     DefaultFront(ip: '216.239.32.117', sni: 'www.gstatic.com', provider: 'google'),
     DefaultFront(ip: '142.250.185.110', sni: 'fonts.googleapis.com', provider: 'google'),
     DefaultFront(ip: '142.250.203.174', sni: 'www.google.com', provider: 'google'),
-    // Akamai (Se7en catch-alls)
+    // Akamai built-in edges
     DefaultFront(ip: '23.215.0.206', sni: 'a248.e.akamai.net', provider: 'akamai'),
     DefaultFront(ip: '23.215.0.203', sni: 'a.akamaized.net', provider: 'akamai'),
     DefaultFront(ip: '23.212.250.91', sni: 'a.akamaihd.net', provider: 'akamai'),

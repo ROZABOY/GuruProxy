@@ -437,7 +437,7 @@ class _WhiteIpPageState extends State<WhiteIpPage> {
       const SizedBox(height: 6),
       Text(
         'Active whitelist: ${state.settings.activeGroupName.trim().isEmpty ? "(none)" : state.settings.activeGroupName}'
-        ' · Se7en-identical catch-all dials',
+        ' · CDN catch-all dials',
         style: const TextStyle(fontSize: 12, color: GuruTheme.sand, fontWeight: FontWeight.w600),
       ),
       const SizedBox(height: 12),

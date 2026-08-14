@@ -27,13 +27,20 @@ class SettingsStore extends ChangeNotifier {
     return store;
   }
 
-  /// Apply defaults: multi-CDN fronts + valid protocols (schema 9).
+  /// Apply defaults + purge invalid protocol IDs (schema 10).
   Future<void> ensureV22CloudflarePreset(String csvAssetText) async {
     final schema = _prefs.getInt('settingsSchema') ?? 0;
 
-    // Schema 9+: fix invalid protocol IDs + ensure multi-CDN seed IPs.
-    if (schema >= 9) {
-      _migrateProtocolIds();
+    // Always migrate bad protocol IDs (even on newer schemas).
+    _migrateProtocolIds();
+    // Force Auto-protocol on phones so stale manual lists cannot crash Start.
+    if (Platform.isAndroid || Platform.isIOS) {
+      if (!_prefs.containsKey('autoProtocol') || schema < 10) {
+        autoProtocol = true;
+      }
+    }
+
+    if (schema >= 10) {
       if (localSocksPort == 8088 || localHttpPort == 8089) {
         localSocksPort = 17888;
         localHttpPort = 17889;
@@ -44,15 +51,13 @@ class SettingsStore extends ChangeNotifier {
       return;
     }
 
-    // Older installs: still migrate ports / CF preset, then bump to 9.
-    if (schema >= 8 && customIps.trim().isNotEmpty && activeGroupName == 'known-working') {
+    if (schema >= 8 && customIps.trim().isNotEmpty) {
       if (localSocksPort == 8088 || localHttpPort == 8089) {
         localSocksPort = 17888;
         localHttpPort = 17889;
       }
-      _migrateProtocolIds();
       _seedDefaultFronts(csvAssetText, mergeOnly: true);
-      await _prefs.setInt('settingsSchema', 9);
+      await _prefs.setInt('settingsSchema', 10);
       return;
     }
 
@@ -67,18 +72,36 @@ class SettingsStore extends ChangeNotifier {
     autoProtocol = true;
 
     _seedDefaultFronts(csvAssetText);
-    _migrateProtocolIds();
-    await _prefs.setInt('settingsSchema', 9);
+    await _prefs.setInt('settingsSchema', 10);
   }
 
   void _migrateProtocolIds() {
+    // Drop any stored IDs that are not in the current catalog / allow-list.
     final raw = _prefs.getString('enabledProtocolsJson');
-    if (raw == null || raw.isEmpty) return;
+    if (raw == null || raw.isEmpty) {
+      _prefs.setString(
+        'enabledProtocolsJson',
+        jsonEncode(ProtocolCatalog.mobileAutoDefaults()),
+      );
+      return;
+    }
     try {
-      final list = (jsonDecode(raw) as List).map((e) => e.toString()).map(ProtocolCatalog.canonicalize).toList();
-      final cleaned = list.where((id) => ProtocolCatalog.options.any((o) => o.id == id)).toList();
+      final list = (jsonDecode(raw) as List)
+          .map((e) => e.toString())
+          .map(ProtocolCatalog.canonicalize)
+          .where((id) => ProtocolCatalog.androidAllowList.contains(id) || ProtocolCatalog.options.any((o) => o.id == id))
+          .toList();
+      final cleaned = ProtocolCatalog.sanitizeForStart(
+        list,
+        android: Platform.isAndroid || Platform.isIOS,
+      );
       _prefs.setString('enabledProtocolsJson', jsonEncode(cleaned));
-    } catch (_) {}
+    } catch (_) {
+      _prefs.setString(
+        'enabledProtocolsJson',
+        jsonEncode(ProtocolCatalog.mobileAutoDefaults()),
+      );
+    }
   }
 
   void _seedDefaultFronts(String csvAssetText, {bool mergeOnly = false}) {

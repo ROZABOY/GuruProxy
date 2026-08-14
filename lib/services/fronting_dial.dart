@@ -1,8 +1,8 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 
-/// Exact port of Se7en Pro `CdnFrontingBuilder` — this is what connects.
+/// CDN fronting dial overrides for Psiphon FrontedMeekDialOverrides.
 ///
-/// Live working Se7en config uses:
+/// Working pattern:
 /// - custom IPs as catch-all `MatchDialAddressRegexes: [".*"]` (`edge-custom-N`)
 /// - built-in Akamai edges also `.*`, with SNI = first custom SNI when set
 ///   (often `www.cloudflare.com`), NOT forced `a248.e.akamai.net`
@@ -86,7 +86,7 @@ class FrontingDialBuilder {
       case 'akamai':
         return 'akamai';
       default:
-        // Se7en default when unset is akamai; GuruProxy UI prefers cloudflare
+        // CDN default when unset is akamai; GuruProxy UI prefers cloudflare
         // but either works with catch-all custom IPs.
         return 'cloudflare';
     }
@@ -149,7 +149,7 @@ class FrontingDialBuilder {
       ));
     }
 
-    // Se7en: every custom IP is a catch-all `.*` edge override.
+    // CDN: every custom IP is a catch-all `.*` edge override.
     final customIps = parseIps(customIpList);
     for (var i = 0; i < customIps.length; i++) {
       final sniForIp = snis.isNotEmpty ? snis[i % snis.length] : '';
@@ -164,7 +164,7 @@ class FrontingDialBuilder {
     }
 
     if (includeBuiltInDefaults) {
-      // Se7en: Akamai built-ins use primarySni when set (often Cloudflare SNI).
+      // CDN: Akamai built-ins use primarySni when set (often Cloudflare SNI).
       for (final e in defaultEdgeIps) {
         _putEdgeOverride(
           overrides,
@@ -189,7 +189,7 @@ class FrontingDialBuilder {
     String providerId,
   ) {
     if (!dialAddresses.add(ipAddress)) return;
-    // Se7en: empty custom SNI → use the IP itself as SNIServerName.
+    // CDN: empty custom SNI â†’ use the IP itself as SNIServerName.
     final sniServerName = customSni.trim().isEmpty ? ipAddress : customSni.trim();
     final alpn = (providerId == 'cloudflare' || providerId == 'fastly' || providerId == 'google')
         ? const ['h2', 'http/1.1']
