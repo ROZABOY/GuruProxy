@@ -1,4 +1,4 @@
-﻿# Flutter / Dart
+# Flutter / Dart
 .dart_tool/
 .packages
 .pub-cache/
@@ -33,3 +33,9 @@ x-run_here/
 Thumbs.db
 Desktop.ini
 .DS_Store
+
+android/key.properties
+android/keystore/
+*.jks
+*.keystore
+assets/bin/network_config.json

@@ -1,6 +1,7 @@
 import 'dart:io';
 
-/// Known Psiphon tunnel protocols exposed as Settings checkboxes.
+/// Psiphon LimitTunnelProtocols — must match SupportedTunnelProtocols.
+/// Invalid names (e.g. UNFRONTED-MEEK-HTTPS without -OSSH) abort Start().
 class ProtocolOption {
   const ProtocolOption({
     required this.id,
@@ -8,6 +9,7 @@ class ProtocolOption {
     required this.hint,
     this.mobilePreferred = false,
     this.desktopCdnDefault = false,
+    this.androidSupported = true,
   });
 
   final String id;
@@ -15,17 +17,27 @@ class ProtocolOption {
   final String hint;
   final bool mobilePreferred;
   final bool desktopCdnDefault;
+  /// False for protocols only the Windows Se7en binary accepts (e.g. CDN-OSSH).
+  final bool androidSupported;
 }
 
 class ProtocolCatalog {
   ProtocolCatalog._();
 
+  /// Rename legacy checkbox IDs that crash Android library validation.
+  static const aliases = <String, String>{
+    'UNFRONTED-MEEK-HTTPS': 'UNFRONTED-MEEK-HTTPS-OSSH',
+    'UNFRONTED-MEEK-SESSION-TICKET': 'UNFRONTED-MEEK-SESSION-TICKET-OSSH',
+    'UNFRONTED-MEEK': 'UNFRONTED-MEEK-OSSH',
+  };
+
   static const options = <ProtocolOption>[
     ProtocolOption(
       id: 'FRONTED-MEEK-CDN-OSSH',
       label: 'Fronted Meek CDN + OSSH',
-      hint: 'CDN-fronted OSSH (Se7en Windows staple)',
+      hint: 'Se7en Windows staple — not in Android library',
       desktopCdnDefault: true,
+      androidSupported: false,
     ),
     ProtocolOption(
       id: 'FRONTED-MEEK-OSSH',
@@ -49,21 +61,27 @@ class ProtocolCatalog {
       desktopCdnDefault: true,
     ),
     ProtocolOption(
-      id: 'UNFRONTED-MEEK-HTTPS',
-      label: 'Unfronted Meek HTTPS',
-      hint: 'Direct Meek — common on Android/iOS',
+      id: 'UNFRONTED-MEEK-HTTPS-OSSH',
+      label: 'Unfronted Meek HTTPS + OSSH',
+      hint: 'Direct Meek HTTPS (Android/iOS)',
       mobilePreferred: true,
     ),
     ProtocolOption(
-      id: 'UNFRONTED-MEEK-SESSION-TICKET',
-      label: 'Unfronted Meek session ticket',
-      hint: 'TLS session-ticket Meek variant',
+      id: 'UNFRONTED-MEEK-SESSION-TICKET-OSSH',
+      label: 'Unfronted Meek session ticket + OSSH',
+      hint: 'TLS session-ticket Meek',
+      mobilePreferred: true,
+    ),
+    ProtocolOption(
+      id: 'UNFRONTED-MEEK-OSSH',
+      label: 'Unfronted Meek + OSSH',
+      hint: 'Plain unfronted Meek',
       mobilePreferred: true,
     ),
     ProtocolOption(
       id: 'QUIC-OSSH',
       label: 'QUIC + OSSH',
-      hint: 'UDP QUIC tunnel (mobile-friendly)',
+      hint: 'UDP QUIC tunnel',
       mobilePreferred: true,
     ),
     ProtocolOption(
@@ -89,34 +107,44 @@ class ProtocolCatalog {
     'FRONTED-MEEK-HTTP-OSSH',
     'FRONTED-MEEK-OSSH',
     'FRONTED-MEEK-CDN-OSSH',
-    'UNFRONTED-MEEK-HTTPS',
-    'UNFRONTED-MEEK-SESSION-TICKET',
+    'UNFRONTED-MEEK-HTTPS-OSSH',
+    'UNFRONTED-MEEK-SESSION-TICKET-OSSH',
+    'UNFRONTED-MEEK-OSSH',
     'QUIC-OSSH',
     'OSSH',
     'TLS-OSSH',
     'SSH',
   ];
 
+  static String canonicalize(String id) => aliases[id] ?? id;
+
   static List<String> desktopCdnDefaults() =>
       options.where((o) => o.desktopCdnDefault).map((o) => o.id).toList();
 
   static List<String> mobileAutoDefaults() {
-    final preferred = options.where((o) => o.mobilePreferred).map((o) => o.id).toList();
-    return _sorted(preferred);
+    // Prefer fronted Meek first (matches Se7en CDN path), then unfronted + QUIC.
+    return _forPlatform(_sorted([
+      'FRONTED-MEEK-QUIC-OSSH',
+      'FRONTED-MEEK-HTTP-OSSH',
+      'FRONTED-MEEK-OSSH',
+      'UNFRONTED-MEEK-HTTPS-OSSH',
+      'UNFRONTED-MEEK-SESSION-TICKET-OSSH',
+      'UNFRONTED-MEEK-OSSH',
+      'QUIC-OSSH',
+      'OSSH',
+    ]));
   }
 
-  static List<String> directDefaults() => const [
+  static List<String> directDefaults() => _forPlatform(const [
         'QUIC-OSSH',
         'OSSH',
         'TLS-OSSH',
         'SSH',
         'FRONTED-MEEK-QUIC-OSSH',
         'FRONTED-MEEK-OSSH',
-        'FRONTED-MEEK-CDN-OSSH',
-        'UNFRONTED-MEEK-HTTPS',
-      ];
+        'UNFRONTED-MEEK-HTTPS-OSSH',
+      ]);
 
-  /// Resolve LimitTunnelProtocols from settings flags.
   static List<String> resolve({
     required bool autoProtocol,
     required List<String> enabled,
@@ -127,19 +155,26 @@ class ProtocolCatalog {
       if (mobile) return mobileAutoDefaults();
       if (protocolMode == 'cdn_fronting') return desktopCdnDefaults();
       if (protocolMode == 'direct') return directDefaults();
-      // Auto mode on desktop: mix CDN + direct-friendly.
-      return _sorted({...desktopCdnDefaults(), ...directDefaults()}.toList());
+      return _forPlatform(_sorted({...desktopCdnDefaults(), ...directDefaults()}.toList()));
     }
 
-    final picked = enabled.where((id) => options.any((o) => o.id == id)).toList();
+    final picked = enabled.map(canonicalize).where((id) => options.any((o) => o.id == id)).toList();
     if (picked.isEmpty) {
       return resolve(autoProtocol: true, enabled: const [], protocolMode: protocolMode);
     }
-    return _sorted(picked);
+    return _forPlatform(_sorted(picked));
+  }
+
+  static List<String> _forPlatform(List<String> ids) {
+    if (!(Platform.isAndroid || Platform.isIOS)) return ids;
+    final allowed = options.where((o) => o.androidSupported).map((o) => o.id).toSet();
+    final out = ids.where(allowed.contains).toList();
+    if (out.isEmpty) return mobileAutoDefaults();
+    return out;
   }
 
   static List<String> _sorted(List<String> ids) {
-    final set = ids.toSet();
+    final set = ids.map(canonicalize).toSet();
     final out = <String>[];
     for (final id in order) {
       if (set.remove(id)) out.add(id);

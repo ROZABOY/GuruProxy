@@ -1,17 +1,16 @@
 # GuruProxy Changelog
 
-## v2.4.1 — app-focused fix (2026-08-14)
+## v2.4.2 — connect fix + icon + signed APK (2026-08-14)
 
-- **White IP mobile layout:** single column; Start/Auto-find/Apply at top; Healthy IP list at bottom.
-- **Buttons work:** larger tap targets; scan progress shown; Import/Export always reachable.
-- **Connect / Iran Quick on Android:** starts real Psiphon Android library (not a dead Windows-only stub). SnackBars show connecting/error.
-- Session notification Stop still wired.
-- Bundled `network_config.json` extracted at runtime (gitignored — not in git).
+- **Fix crash:** invalid protocols `UNFRONTED-MEEK-HTTPS` / `SESSION-TICKET` → correct `-OSSH` names; strip `FRONTED-MEEK-CDN-OSSH` on Android (not in library).
+- **Launcher icon:** brand shield from `assets/brand/app-icon.png` (no Flutter default).
+- **Release signing key:** APK signed with GuruProxy release keystore (still sideload warning from Android for non-Play installs — normal).
+- **Default fronts:** Cloudflare + Google (`216.239.38.120` / `www.google.com`) + Akamai + Fastly (+ extras) so dial list is never empty.
 
-## v2.4.0 — app-focused (2026-08-14)
+## v2.4.1
 
-- Safe areas, bottom tabs, status below connect, session notification, protocol checkboxes.
+- White IP mobile layout; Android Psiphon library; SnackBars.
 
-## v2.3.0
+## v2.4.0
 
-- Se7en-identical CDN dials, ports 17888/17889, proxy listen + stable profile.
+- App-focused mobile shell, notification, protocol checkboxes.

@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'fronting_dial.dart';
+import 'default_fronts.dart';
 import 'protocol_catalog.dart';
 
 class SettingsStore extends ChangeNotifier {
@@ -26,63 +27,112 @@ class SettingsStore extends ChangeNotifier {
     return store;
   }
 
-  /// Apply v2.2 defaults: Cloudflare + known-working CF list (once).
+  /// Apply defaults: multi-CDN fronts + valid protocols (schema 9).
   Future<void> ensureV22CloudflarePreset(String csvAssetText) async {
     final schema = _prefs.getInt('settingsSchema') ?? 0;
-    // Schema 8 = ports 17888/17889 (leave 8088/8089 for Se7en Pro).
-    if (schema >= 8 && customIps.trim().isNotEmpty && activeGroupName == 'known-working') {
-      // Still migrate off Se7en ports if user somehow still has them.
+
+    // Schema 9+: fix invalid protocol IDs + ensure multi-CDN seed IPs.
+    if (schema >= 9) {
+      _migrateProtocolIds();
       if (localSocksPort == 8088 || localHttpPort == 8089) {
         localSocksPort = 17888;
         localHttpPort = 17889;
       }
+      if (customIps.trim().isEmpty) {
+        _seedDefaultFronts(csvAssetText);
+      }
+      return;
+    }
+
+    // Older installs: still migrate ports / CF preset, then bump to 9.
+    if (schema >= 8 && customIps.trim().isNotEmpty && activeGroupName == 'known-working') {
+      if (localSocksPort == 8088 || localHttpPort == 8089) {
+        localSocksPort = 17888;
+        localHttpPort = 17889;
+      }
+      _migrateProtocolIds();
+      _seedDefaultFronts(csvAssetText, mergeOnly: true);
+      await _prefs.setInt('settingsSchema', 9);
       return;
     }
 
     cdnProvider = 'cloudflare';
     sniOverrideEnabled = true;
-    customSnis =
-        'www.cloudflare.com\nak.net.akamaized.net\ncloudflare.com\nsnapp.ir\ndigikala.com\ngoogle.com';
-    // Keep Se7en Akamai catch-alls so FRONTED-MEEK-OSSH can connect.
     autoFindIpAndSni = true;
     protocolMode = 'cdn_fronting';
     beastMode = true;
     localSocksPort = 17888;
     localHttpPort = 17889;
     establishTimeoutSec = 90;
+    autoProtocol = true;
 
-    // Parse CSV without importing ip_list_csv cycle in setter path — inline.
+    _seedDefaultFronts(csvAssetText);
+    _migrateProtocolIds();
+    await _prefs.setInt('settingsSchema', 9);
+  }
+
+  void _migrateProtocolIds() {
+    final raw = _prefs.getString('enabledProtocolsJson');
+    if (raw == null || raw.isEmpty) return;
+    try {
+      final list = (jsonDecode(raw) as List).map((e) => e.toString()).map(ProtocolCatalog.canonicalize).toList();
+      final cleaned = list.where((id) => ProtocolCatalog.options.any((o) => o.id == id)).toList();
+      _prefs.setString('enabledProtocolsJson', jsonEncode(cleaned));
+    } catch (_) {}
+  }
+
+  void _seedDefaultFronts(String csvAssetText, {bool mergeOnly = false}) {
     final ips = <String>[];
     final entries = <IpEntry>[];
+    final snis = <String>{};
+
+    void addIp(String ip, String sni, int latency) {
+      if (ip.split('.').length != 4) return;
+      if (ips.contains(ip)) return;
+      ips.add(ip);
+      snis.add(sni);
+      entries.add(IpEntry(ip: ip, latencyMs: latency, sni: sni));
+    }
+
+    // Built-in multi-CDN defaults first (Google IP user requested included).
+    for (final f in DefaultFronts.all) {
+      addIp(f.ip, f.sni, 25);
+    }
+
+    // Merge known-working CF CSV.
     for (final line in csvAssetText.split(RegExp(r'\r?\n'))) {
       final t = line.trim();
       if (t.isEmpty || t.toLowerCase().startsWith('ip,')) continue;
       final parts = t.split(',');
       if (parts.isEmpty) continue;
       final ip = parts[0].trim();
-      if (ip.split('.').length != 4) continue;
-      if (ips.contains(ip)) continue;
-      final latency = parts.length > 1 ? int.tryParse(parts[1].trim()) ?? 0 : 0;
-      ips.add(ip);
-      entries.add(IpEntry(ip: ip, latencyMs: latency, sni: 'www.cloudflare.com'));
+      final latency = parts.length > 1 ? int.tryParse(parts[1].trim()) ?? 40 : 40;
+      addIp(ip, 'www.cloudflare.com', latency);
     }
+
     if (ips.isEmpty) return;
 
-    customIps = ips.join('\n');
-    activeGroupName = 'known-working';
+    if (mergeOnly && customIps.trim().isNotEmpty) {
+      // Keep user list; only fill SNIs if empty.
+      if (customSnis.trim().isEmpty) {
+        customSnis = snis.join('\n');
+      }
+      return;
+    }
+
+    customIps = ips.take(32).join('\n');
+    customSnis = snis.join('\n');
+    activeGroupName = 'defaults-multi-cdn';
     autoFindIpAndSni = true;
-    localSocksPort = 17888;
-    localHttpPort = 17889;
-    establishTimeoutSec = 90;
+    sniOverrideEnabled = true;
     upsertIpGroup(IpGroup(
-      name: 'known-working',
+      name: 'defaults-multi-cdn',
       ips: customIps,
       snis: customSnis,
       provider: 'cloudflare',
       keepDefaults: true,
-      entries: entries,
+      entries: entries.take(32).toList(),
     ));
-    await _prefs.setInt('settingsSchema', 8);
   }
 
   String get activeGroupName => _prefs.getString('activeGroupName') ?? '';
@@ -123,7 +173,11 @@ class SettingsStore extends ChangeNotifier {
       return ProtocolCatalog.desktopCdnDefaults();
     }
     try {
-      return (jsonDecode(raw) as List).map((e) => e.toString()).toList();
+      return (jsonDecode(raw) as List)
+          .map((e) => e.toString())
+          .map(ProtocolCatalog.canonicalize)
+          .where((id) => ProtocolCatalog.options.any((o) => o.id == id))
+          .toList();
     } catch (_) {
       return ProtocolCatalog.desktopCdnDefaults();
     }
