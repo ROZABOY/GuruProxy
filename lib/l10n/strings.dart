@@ -2,7 +2,7 @@ class S {
   S(this.fa);
   final bool fa;
 
-  String get appName => 'GuruProxy v2.4';
+  String get appName => 'GuruProxy v2.4.1';
   String get menuConnect => fa ? 'اتصال' : 'Connect';
   String get menuSession => fa ? 'نشست' : 'Session';
   String get menuWhiteIp => fa ? 'اسکنر IP' : 'White IP';

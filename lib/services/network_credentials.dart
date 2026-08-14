@@ -33,8 +33,18 @@ class NetworkSnapshot {
 
 class NetworkCredentials {
   static NetworkSnapshot? _cached;
+  static String? _bundledConfigPath;
+
+  /// Called after AssetBootstrap extracts assets/bin/network_config.json.
+  static void setBundledConfigPath(String path) {
+    _bundledConfigPath = path;
+    _cached = null;
+  }
 
   static String get appDataConfigPath {
+    if (!Platform.isWindows && _bundledConfigPath != null) {
+      return _bundledConfigPath!;
+    }
     final local = Platform.environment['LOCALAPPDATA'] ??
         '${Platform.environment['USERPROFILE']}\\AppData\\Local';
     return '$local${Platform.pathSeparator}GuruProxy${Platform.pathSeparator}network_config.json';
@@ -68,16 +78,18 @@ class NetworkCredentials {
   static NetworkSnapshot resolve({bool forceReload = false}) {
     if (!forceReload && _cached != null) return _cached!;
 
-    for (final entry in [
-      (appDataConfigPath, 'GuruProxy network_config.json'),
-      (legacyUiConfigPath, 'legacy PsiphonUI network_config.json'),
-      (tunnelCoreConfigPath, 'existing tunnel-core config.json'),
-    ]) {
+    final search = <(String, String)>[
+      if (_bundledConfigPath != null) (_bundledConfigPath!, 'bundled network_config.json'),
+      if (Platform.isWindows) ...[
+        (appDataConfigPath, 'GuruProxy network_config.json'),
+        (legacyUiConfigPath, 'legacy PsiphonUI network_config.json'),
+        (tunnelCoreConfigPath, 'existing tunnel-core config.json'),
+      ],
+    ];
+
+    for (final entry in search) {
       final snap = _tryFromJsonFile(entry.$1, entry.$2);
       if (snap != null) {
-        if (entry.$1 != appDataConfigPath) {
-          _tryPersist(snap);
-        }
         _cached = snap;
         return snap;
       }

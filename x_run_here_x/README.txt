@@ -1,6 +1,4 @@
-﻿GuruProxy v2.4 — app-focused
-============================
-Download release assets from:
-https://github.com/ROZABOY/GuruProxy/releases/tag/v2.4
-
-Android: GuruProxy-v2.4-universal.apk
+﻿GuruProxy v2.4.1 — app-focused
+==============================
+https://github.com/ROZABOY/GuruProxy/releases/tag/v2.4.1
+Android: GuruProxy-v2.4.1-universal.apk

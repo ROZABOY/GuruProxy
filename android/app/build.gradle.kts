@@ -1,6 +1,5 @@
 plugins {
     id("com.android.application")
-    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
 
@@ -41,4 +40,5 @@ flutter {
 
 dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
+    implementation("ca.psiphon:psiphontunnel:2.0.40")
 }

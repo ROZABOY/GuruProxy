@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 import 'asset_bootstrap.dart';
+import 'android_tunnel_bridge.dart';
 import 'egress_regions.dart';
 import 'fronting_dial.dart';
 import 'network_credentials.dart';
@@ -101,14 +102,176 @@ class TunnelEngine extends ChangeNotifier {
     return '${(bps / (1024 * 1024)).toStringAsFixed(2)} MB/s';
   }
 
+  StreamSubscription? _androidEvents;
+  bool _androidRunning = false;
+
   Future<void> start() async {
+    if (Platform.isAndroid) {
+      await _startAndroid();
+      return;
+    }
+
     if (!Platform.isWindows) {
-      _append('Tunnel core is currently Windows-only in GuruProxy_v2.');
+      lastError =
+          'Tunnel is not available on this platform yet. Use Android or Windows builds.';
+      _append(lastError);
       state = TunnelState.error;
+      statusHint = lastError;
       notifyListeners();
       return;
     }
 
+    await _startWindows();
+  }
+
+  Future<void> _startAndroid() async {
+    _userWants = true;
+    if (_androidRunning) return;
+
+    final gen = ++_generation;
+    state = TunnelState.connecting;
+    lastError = '';
+    connectedRegion = '';
+    routeIp = '';
+    routeSni = '';
+    routeProtocol = '';
+    routeOverrideId = '';
+    socksPort = 0;
+    httpPort = 0;
+    bytesSent = 0;
+    bytesReceived = 0;
+    uploadBps = 0;
+    downloadBps = 0;
+    _attempts.clear();
+    _activity.clear();
+    _note('Starting Android tunnel…');
+    notifyListeners();
+
+    try {
+      await bootstrap.ensureReady();
+      if (!NetworkCredentials.hasUsableNetworkConfig()) {
+        throw Exception(
+          'Network credentials missing in app. Rebuild APK with network_config.json, '
+          'or copy credentials into app storage.',
+        );
+      }
+
+      final support = await NetworkCredentials.dataRoot();
+      _workDir = Directory('${support.path}${Platform.pathSeparator}tunnel-core');
+      await _workDir!.create(recursive: true);
+
+      final config = _buildConfigJson(forAndroid: true);
+      await File('${_workDir!.path}${Platform.pathSeparator}config.json').writeAsString(config);
+
+      await _androidEvents?.cancel();
+      final bridge = AndroidTunnelBridge.instance;
+      await bridge.ensureListening();
+      _androidEvents = bridge.events.listen((ev) {
+        if (gen != _generation) return;
+        _onAndroidEvent(ev);
+      });
+
+      _androidRunning = true;
+      await bridge.start(config);
+      _append('Android Psiphon library start requested');
+
+      final timeoutSec = settings.establishTimeoutSec.clamp(30, 600);
+      _establishTimer?.cancel();
+      _establishTimer = Timer(Duration(seconds: timeoutSec), () {
+        if (gen != _generation) return;
+        if (state == TunnelState.connecting && _userWants) {
+          lastError = 'establish timeout';
+          _append('Could not establish a tunnel in time on Android.');
+          stop();
+        }
+      });
+    } catch (e) {
+      _androidRunning = false;
+      _append('Failed to start Android tunnel: $e');
+      lastError = e.toString();
+      state = TunnelState.error;
+      statusHint = lastError;
+      notifyListeners();
+    }
+  }
+
+  void _onAndroidEvent(Map<String, dynamic> ev) {
+    final type = ev['type']?.toString() ?? '';
+    if (type == 'connecting') {
+      state = TunnelState.connecting;
+      _note('Connecting…');
+      notifyListeners();
+      return;
+    }
+    if (type == 'connected') {
+      state = TunnelState.connected;
+      socksPort = (ev['socks'] as num?)?.toInt() ?? socksPort;
+      httpPort = (ev['http'] as num?)?.toInt() ?? httpPort;
+      _note('Connected');
+      _append('Connected (SOCKS=$socksPort HTTP=$httpPort)');
+      notifyListeners();
+      return;
+    }
+    if (type == 'socks') {
+      socksPort = (ev['port'] as num?)?.toInt() ?? socksPort;
+      notifyListeners();
+      return;
+    }
+    if (type == 'http') {
+      httpPort = (ev['port'] as num?)?.toInt() ?? httpPort;
+      notifyListeners();
+      return;
+    }
+    if (type == 'region') {
+      connectedRegion = ev['region']?.toString() ?? '';
+      notifyListeners();
+      return;
+    }
+    if (type == 'bytes') {
+      final sent = (ev['sent'] as num?)?.toInt() ?? 0;
+      final recv = (ev['received'] as num?)?.toInt() ?? 0;
+      final now = DateTime.now();
+      if (_lastByteSampleAt != null) {
+        final dt = now.difference(_lastByteSampleAt!).inMilliseconds / 1000.0;
+        if (dt > 0.2) {
+          uploadBps = (sent - _lastSentSample).clamp(0, 1 << 30) / dt;
+          downloadBps = (recv - _lastRecvSample).clamp(0, 1 << 30) / dt;
+        }
+      }
+      bytesSent = sent;
+      bytesReceived = recv;
+      _lastSentSample = sent;
+      _lastRecvSample = recv;
+      _lastByteSampleAt = now;
+      notifyListeners();
+      return;
+    }
+    if (type == 'diagnostic') {
+      final msg = ev['message']?.toString() ?? '';
+      if (msg.isNotEmpty) {
+        _append(msg);
+        if (msg.length < 120) _note(msg);
+      }
+      return;
+    }
+    if (type == 'exiting') {
+      if (_userWants) {
+        state = TunnelState.connecting;
+        _append('Tunnel exiting — will need reconnect');
+      } else {
+        state = TunnelState.disconnected;
+      }
+      _androidRunning = false;
+      notifyListeners();
+      return;
+    }
+    if (type == 'upstream_error') {
+      lastError = ev['message']?.toString() ?? 'upstream error';
+      notifyListeners();
+    }
+  }
+
+  Future<void> _startWindows() async {
     _userWants = true;
     if (_process != null) return;
 
@@ -249,6 +412,22 @@ class TunnelEngine extends ChangeNotifier {
     _rateTimer?.cancel();
     uploadBps = 0;
     downloadBps = 0;
+
+    if (Platform.isAndroid || _androidRunning) {
+      state = TunnelState.disconnecting;
+      notifyListeners();
+      try {
+        await AndroidTunnelBridge.instance.stop();
+      } catch (_) {}
+      await _androidEvents?.cancel();
+      _androidEvents = null;
+      _androidRunning = false;
+      state = TunnelState.disconnected;
+      _note('Disconnected');
+      notifyListeners();
+      return;
+    }
+
     final proc = _process;
     if (proc == null) {
       state = TunnelState.disconnected;
@@ -257,19 +436,10 @@ class TunnelEngine extends ChangeNotifier {
       return;
     }
     state = TunnelState.disconnecting;
-    _note('Stopping…');
-    _append('Stopping tunnel...');
     notifyListeners();
-    await _outSub?.cancel();
-    await _errSub?.cancel();
-    _outSub = null;
-    _errSub = null;
+    proc.kill();
     try {
-      proc.kill();
-    } catch (_) {}
-    await Future.delayed(const Duration(milliseconds: 250));
-    try {
-      proc.kill();
+      await proc.exitCode.timeout(const Duration(seconds: 3));
     } catch (_) {}
     _process = null;
     state = TunnelState.disconnected;
@@ -515,11 +685,11 @@ class TunnelEngine extends ChangeNotifier {
     } catch (_) {}
   }
 
-  String _buildConfigJson() {
+  String _buildConfigJson({bool forAndroid = false}) {
     final net = NetworkCredentials.resolve();
     if (!NetworkCredentials.hasUsableNetworkConfig()) {
       _append(
-        'Network credentials missing. Run official Psiphon once, or place network_config.json in %LOCALAPPDATA%\\GuruProxy\\',
+        'Network credentials missing. Run official Psiphon once, or place network_config.json in app storage.',
       );
     } else {
       _append('Network config source: ${net.source}');
@@ -533,7 +703,7 @@ class TunnelEngine extends ChangeNotifier {
     final http = settings.localHttpPort;
 
     final cfg = <String, dynamic>{
-      'ClientPlatform': '${net.clientPlatform}_${Platform.operatingSystemVersion}',
+      'ClientPlatform': forAndroid ? 'Android' : '${net.clientPlatform}_${Platform.operatingSystemVersion}',
       'ClientVersion': net.clientVersion,
       'PropagationChannelId': net.propagationChannelId,
       'SponsorId': net.sponsorId,
@@ -585,10 +755,14 @@ class TunnelEngine extends ChangeNotifier {
       _append('Connection profile: normal');
     }
 
-    // Match Se7en ClientPlatform style: Windows_<osVersion>
-    final osVer = Platform.operatingSystemVersion;
-    final m = RegExp(r'(\d+\.\d+)').firstMatch(osVer);
-    cfg['ClientPlatform'] = 'Windows_${m?.group(1) ?? '10.0'}';
+    // Match Se7en ClientPlatform style on Windows; Android uses plain "Android".
+    if (!forAndroid) {
+      final osVer = Platform.operatingSystemVersion;
+      final m = RegExp(r'(\d+\.\d+)').firstMatch(osVer);
+      cfg['ClientPlatform'] = 'Windows_${m?.group(1) ?? '10.0'}';
+    } else {
+      cfg['ClientPlatform'] = 'Android';
+    }
 
     final egress = EgressRegions.toConfigValue(settings.egressRegion);
     if (egress.isNotEmpty) {

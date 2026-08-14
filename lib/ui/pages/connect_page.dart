@@ -42,7 +42,11 @@ class ConnectPage extends StatelessWidget {
               color: Colors.transparent,
               child: InkWell(
                 customBorder: const CircleBorder(),
-                onTap: () => tunnel.toggle(),
+                onTap: () async {
+                  await tunnel.toggle();
+                  if (!context.mounted) return;
+                  _toastConnectResult(context, tunnel, s);
+                },
                 child: Padding(
                   padding: const EdgeInsets.all(8),
                   child: Image.asset(
@@ -106,9 +110,11 @@ class ConnectPage extends StatelessWidget {
       runSpacing: 8,
       children: [
         FilledButton.tonal(
-          onPressed: () {
+          onPressed: () async {
             state.settings.applyIranQuickConnect();
-            tunnel.start();
+            await tunnel.start();
+            if (!context.mounted) return;
+            _toastConnectResult(context, tunnel, s);
           },
           child: Text(s.iranQuick),
         ),
@@ -180,6 +186,23 @@ class ConnectPage extends StatelessWidget {
       ),
     );
   }
+}
+
+void _toastConnectResult(BuildContext context, TunnelEngine tunnel, S s) {
+  final msg = switch (tunnel.state) {
+    TunnelState.connecting => s.connecting,
+    TunnelState.connected => s.connected,
+    TunnelState.error => tunnel.lastError.isEmpty ? 'Connect failed — check Log tab' : tunnel.lastError,
+    TunnelState.disconnected => s.disconnected,
+    TunnelState.disconnecting => 'Stopping…',
+  };
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(msg),
+      duration: Duration(seconds: tunnel.state == TunnelState.error ? 6 : 2),
+      backgroundColor: tunnel.state == TunnelState.error ? Colors.red.shade800 : null,
+    ),
+  );
 }
 
 class _StatusPanel extends StatelessWidget {

@@ -3,11 +3,14 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
-/// Extracts bundled tunnel binary + server list into app support once.
+import 'network_credentials.dart';
+
+/// Extracts bundled tunnel binary + server list + network config into app support.
 class AssetBootstrap {
   Directory? _root;
   File? tunnelExe;
   File? serverEntries;
+  File? networkConfig;
 
   Future<void> ensureReady() async {
     final support = await getApplicationSupportDirectory();
@@ -18,11 +21,16 @@ class AssetBootstrap {
 
     tunnelExe = File('${_root!.path}${Platform.pathSeparator}psiphon-tunnel-core.exe');
     serverEntries = File('${_root!.path}${Platform.pathSeparator}server_entries.txt');
+    networkConfig = File('${_root!.path}${Platform.pathSeparator}network_config.json');
 
     if (Platform.isWindows) {
       await _copyAssetIfNeeded('assets/bin/psiphon-tunnel-core.exe', tunnelExe!);
     }
     await _copyAssetIfNeeded('assets/bin/server_entries.txt', serverEntries!);
+    await _copyAssetIfNeeded('assets/bin/network_config.json', networkConfig!);
+    if (await networkConfig!.exists()) {
+      NetworkCredentials.setBundledConfigPath(networkConfig!.path);
+    }
 
     for (final name in [
       'akamai_ip_ranges.txt',

@@ -1,4 +1,6 @@
-import 'dart:io';
+﻿import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -93,7 +95,7 @@ class _WhiteIpPageState extends State<WhiteIpPage> {
 
     if (!_scanRanges && _manualIps.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Paste IPs first, or enable “Also scan CDN ranges”.')),
+        const SnackBar(content: Text('Paste IPs first, or enable â€œAlso scan CDN rangesâ€.')),
       );
       return;
     }
@@ -180,7 +182,7 @@ class _WhiteIpPageState extends State<WhiteIpPage> {
     context.read<AppState>().settings.upsertIpGroup(updated);
     _manualCtrl.text = updated.ipsText;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Rechecked “${group.name}” — sorted by speed')),
+      SnackBar(content: Text('Rechecked â€œ${group.name}â€ â€” sorted by speed')),
     );
   }
 
@@ -223,14 +225,14 @@ class _WhiteIpPageState extends State<WhiteIpPage> {
         entries: useEntries,
       ));
       state.settings.activeGroupName = name;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Saved group “$name” (speed-ordered).')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Saved group â€œ$nameâ€ (speed-ordered).')));
     } else {
       state.settings.activeGroupName = state.settings.activeGroupName.isEmpty ? 'custom' : state.settings.activeGroupName;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             'Applied ${useEntries.length} Cloudflare IPs (fastest first). '
-            'Ping/TLS-ok ≠ guaranteed Psiphon front.',
+            'Ping/TLS-ok â‰  guaranteed Psiphon front.',
           ),
         ),
       );
@@ -296,7 +298,7 @@ class _WhiteIpPageState extends State<WhiteIpPage> {
     });
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Imported ${entries.length} IPs → group “$name” (active whitelist).')),
+      SnackBar(content: Text('Imported ${entries.length} IPs â†’ group â€œ$nameâ€ (active whitelist).')),
     );
   }
 
@@ -395,7 +397,7 @@ class _WhiteIpPageState extends State<WhiteIpPage> {
     await Clipboard.setData(ClipboardData(text: csv));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Exported ${rows.length} IPs → $out (also copied)')),
+      SnackBar(content: Text('Exported ${rows.length} IPs â†’ $out (also copied)')),
     );
   }
 
@@ -418,264 +420,228 @@ class _WhiteIpPageState extends State<WhiteIpPage> {
     return out.isEmpty ? null : out;
   }
 
+
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final s = S(state.locale.languageCode == 'fa');
     final groups = state.settings.ipGroups;
+    final mobile = !kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.android ||
+            defaultTargetPlatform == TargetPlatform.iOS);
+
+    final controls = <Widget>[
+      Text(s.menuWhiteIp, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+      const SizedBox(height: 4),
+      Text(s.helpScan, style: const TextStyle(fontSize: 11.5, color: Color(0xFF9BB0B4))),
+      const SizedBox(height: 6),
+      Text(
+        'Active whitelist: ${state.settings.activeGroupName.trim().isEmpty ? "(none)" : state.settings.activeGroupName}'
+        ' · Se7en-identical catch-all dials',
+        style: const TextStyle(fontSize: 12, color: GuruTheme.sand, fontWeight: FontWeight.w600),
+      ),
+      const SizedBox(height: 12),
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          FilledButton.icon(
+            onPressed: _scanner.running ? null : () { _startScan(); },
+            style: _squareFill(GuruTheme.sand, GuruTheme.ink),
+            icon: const Icon(Icons.radar, size: 18),
+            label: Text(s.scanStart),
+          ),
+          FilledButton.icon(
+            onPressed: _scanner.running ? null : () { _runAutoFind(); },
+            style: _squareFill(GuruTheme.teal, const Color(0xFFF4F1EA)),
+            icon: const Icon(Icons.auto_awesome, size: 18),
+            label: Text(s.autoFindNow),
+          ),
+          FilledButton.icon(
+            onPressed: () => _applyHealthy(toGroup: false),
+            style: _squareFill(GuruTheme.teal, const Color(0xFFF4F1EA)),
+            icon: const Icon(Icons.check, size: 18),
+            label: Text(s.applyEdges),
+          ),
+          OutlinedButton(
+            onPressed: _scanner.running && !_scanner.paused ? () => _scanner.pause() : null,
+            style: _squareOut(),
+            child: Text(s.scanPause),
+          ),
+          OutlinedButton(
+            onPressed: _scanner.running && _scanner.paused ? () => _scanner.resume() : null,
+            style: _squareOut(),
+            child: Text(s.scanResume),
+          ),
+          OutlinedButton(
+            onPressed: _scanner.running ? () => _scanner.stop() : null,
+            style: _squareOut(),
+            child: Text(s.scanStop),
+          ),
+        ],
+      ),
+      const SizedBox(height: 8),
+      Text(
+        _scanner.status,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: _scanner.running ? GuruTheme.sand : const Color(0xFF8FA3A7),
+        ),
+      ),
+      if (_scanner.running)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: LinearProgressIndicator(
+            value: _scanner.total == 0 ? null : (_scanner.checked / _scanner.total).clamp(0.0, 1.0),
+            color: GuruTheme.sand,
+            backgroundColor: GuruTheme.line,
+          ),
+        ),
+      const SizedBox(height: 12),
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          OutlinedButton.icon(
+            onPressed: _scanner.running ? null : () { _importCsv(); },
+            style: _squareOut(),
+            icon: const Icon(Icons.upload_file, size: 16),
+            label: const Text('Import CSV'),
+          ),
+          OutlinedButton.icon(
+            onPressed: _scanner.running ? null : () { _exportCsv(); },
+            style: _squareOut(),
+            icon: const Icon(Icons.download, size: 16),
+            label: const Text('Export CSV'),
+          ),
+        ],
+      ),
+      const SizedBox(height: 12),
+      DropdownButtonFormField<String>(
+        value: _provider,
+        decoration: _dense(s.provider),
+        items: const [
+          DropdownMenuItem(value: 'cloudflare', child: Text('Cloudflare')),
+          DropdownMenuItem(value: 'google', child: Text('Google CDN')),
+          DropdownMenuItem(value: 'akamai', child: Text('Akamai')),
+          DropdownMenuItem(value: 'fastly', child: Text('Fastly')),
+        ],
+        onChanged: (v) {
+          if (v == null) return;
+          setState(() {
+            _provider = v;
+            _sniCtrl.text = switch (v) {
+              'cloudflare' => 'www.cloudflare.com\ncdnjs.cloudflare.com',
+              'google' => 'www.gstatic.com\nfonts.googleapis.com',
+              'fastly' => 'pypi.org\nwww.python.org',
+              _ => 'a248.e.akamai.net\na.akamaized.net',
+            };
+          });
+        },
+      ),
+      const SizedBox(height: 8),
+      DropdownButtonFormField<ScanMethod>(
+        value: _method,
+        decoration: _dense(s.checkMethod),
+        items: [
+          DropdownMenuItem(value: ScanMethod.tlsSni, child: Text(s.methodTls)),
+          DropdownMenuItem(value: ScanMethod.tcp443, child: Text(s.methodTcp)),
+          DropdownMenuItem(value: ScanMethod.ping, child: Text(s.methodPing)),
+        ],
+        onChanged: (v) {
+          if (v != null) setState(() => _method = v);
+        },
+      ),
+      const SizedBox(height: 8),
+      TextField(controller: _sniCtrl, maxLines: 2, enabled: _sniOverride, decoration: _dense(s.sniOverrideList)),
+      const SizedBox(height: 8),
+      TextField(controller: _manualCtrl, maxLines: 4, decoration: _dense('${s.manualIps} — paste your own')),
+      const SizedBox(height: 6),
+      Wrap(
+        spacing: 8,
+        runSpacing: 4,
+        children: [
+          FilterChip(label: Text(s.scanRanges), selected: _scanRanges, onSelected: (v) => setState(() => _scanRanges = v)),
+          FilterChip(label: Text(s.autoFind), selected: _keepDefaults, onSelected: (v) => setState(() => _keepDefaults = v)),
+          FilterChip(label: Text(s.sniOverride), selected: _sniOverride, onSelected: (v) => setState(() => _sniOverride = v)),
+        ],
+      ),
+      const SizedBox(height: 8),
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          _numField(_maxCtrl, s.maxCandidates, 88),
+          _numField(_concCtrl, s.concurrency, 88),
+          _numField(_timeoutCtrl, s.timeoutMs, 96),
+          _numField(_perCidrCtrl, s.perCidr, 88),
+        ],
+      ),
+      const SizedBox(height: 14),
+      Text(s.groups, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+      const SizedBox(height: 6),
+      Row(
+        children: [
+          Expanded(child: TextField(controller: _groupNameCtrl, decoration: _dense(s.groupName))),
+          const SizedBox(width: 8),
+          FilledButton(
+            onPressed: () => _applyHealthy(toGroup: true),
+            style: _squareFill(GuruTheme.sand, GuruTheme.ink),
+            child: Text(s.saveGroup),
+          ),
+        ],
+      ),
+      const SizedBox(height: 8),
+      if (groups.isEmpty)
+        Text(s.noGroups, style: const TextStyle(fontSize: 12, color: Color(0xFF8FA3A7)))
+      else
+        ...groups.map((g) => _groupTile(g, s, state)),
+      const SizedBox(height: 16),
+      _HealthyPanel(
+        scanner: _scanner,
+        s: s,
+        onSort: () => setState(() {
+          _scanner.healthy.sort((a, b) => a.latencyMs.compareTo(b.latencyMs));
+        }),
+        onTapIp: (ip) {
+          final cur = _manualCtrl.text.trim();
+          if (!cur.contains(ip)) {
+            _manualCtrl.text = cur.isEmpty ? ip : '$cur\n$ip';
+            setState(() {});
+          }
+        },
+      ),
+      const SizedBox(height: 24),
+    ];
+
+    if (mobile) {
+      return ListView(padding: const EdgeInsets.fromLTRB(14, 10, 14, 24), children: controls);
+    }
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            flex: 5,
-            child: ListView(
-              children: [
-                Text(s.menuWhiteIp, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-                const SizedBox(height: 4),
-                Text(s.helpScan, style: const TextStyle(fontSize: 11.5, color: Color(0xFF9BB0B4))),
-                const SizedBox(height: 6),
-                Text(
-                  'Active whitelist: ${state.settings.activeGroupName.trim().isEmpty ? "(none)" : state.settings.activeGroupName}'
-                  ' · Se7en-identical catch-all dials',
-                  style: const TextStyle(fontSize: 12, color: GuruTheme.sand, fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    OutlinedButton.icon(
-                      onPressed: _scanner.running ? null : _importCsv,
-                      style: _squareOut(),
-                      icon: const Icon(Icons.upload_file, size: 16),
-                      label: const Text('Import CSV'),
-                    ),
-                    const SizedBox(width: 8),
-                    OutlinedButton.icon(
-                      onPressed: _scanner.running ? null : _exportCsv,
-                      style: _squareOut(),
-                      icon: const Icon(Icons.download, size: 16),
-                      label: const Text('Export CSV'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        initialValue: _provider,
-                        decoration: _dense(s.provider),
-                        items: const [
-                          DropdownMenuItem(value: 'cloudflare', child: Text('Cloudflare')),
-                          DropdownMenuItem(value: 'google', child: Text('Google CDN')),
-                          DropdownMenuItem(value: 'akamai', child: Text('Akamai')),
-                          DropdownMenuItem(value: 'fastly', child: Text('Fastly')),
-                        ],
-                        onChanged: (v) {
-                          if (v == null) return;
-                          setState(() {
-                            _provider = v;
-                            _sniCtrl.text = switch (v) {
-                              'cloudflare' => 'www.cloudflare.com\ncdnjs.cloudflare.com',
-                              'google' => 'www.gstatic.com\nfonts.googleapis.com',
-                              'fastly' => 'pypi.org\nwww.python.org',
-                              _ => 'a248.e.akamai.net\na.akamaized.net',
-                            };
-                          });
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: DropdownButtonFormField<ScanMethod>(
-                        initialValue: _method,
-                        decoration: _dense(s.checkMethod),
-                        items: [
-                          DropdownMenuItem(value: ScanMethod.tlsSni, child: Text(s.methodTls)),
-                          DropdownMenuItem(value: ScanMethod.tcp443, child: Text(s.methodTcp)),
-                          DropdownMenuItem(value: ScanMethod.ping, child: Text(s.methodPing)),
-                        ],
-                        onChanged: (v) {
-                          if (v != null) setState(() => _method = v);
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _sniCtrl,
-                  maxLines: 2,
-                  enabled: _sniOverride,
-                  decoration: _dense(s.sniOverrideList),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _manualCtrl,
-                  maxLines: 4,
-                  decoration: _dense('${s.manualIps} — paste your own'),
-                ),
-                const SizedBox(height: 6),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 4,
-                  children: [
-                    FilterChip(
-                      label: Text(s.scanRanges),
-                      selected: _scanRanges,
-                      onSelected: (v) => setState(() => _scanRanges = v),
-                    ),
-                    FilterChip(
-                      label: Text(s.autoFind),
-                      selected: _keepDefaults,
-                      onSelected: (v) => setState(() => _keepDefaults = v),
-                    ),
-                    FilterChip(
-                      label: Text(s.sniOverride),
-                      selected: _sniOverride,
-                      onSelected: (v) => setState(() => _sniOverride = v),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    _numField(_maxCtrl, s.maxCandidates, 70),
-                    const SizedBox(width: 6),
-                    _numField(_concCtrl, s.concurrency, 70),
-                    const SizedBox(width: 6),
-                    _numField(_timeoutCtrl, s.timeoutMs, 80),
-                    const SizedBox(width: 6),
-                    _numField(_perCidrCtrl, s.perCidr, 70),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: [
-                    FilledButton(
-                      onPressed: _scanner.running ? null : _startScan,
-                      style: _squareFill(GuruTheme.sand, GuruTheme.ink),
-                      child: Text(s.scanStart),
-                    ),
-                    FilledButton(
-                      onPressed: _scanner.running ? null : _runAutoFind,
-                      style: _squareFill(GuruTheme.teal, const Color(0xFFF4F1EA)),
-                      child: Text(s.autoFindNow),
-                    ),
-                    OutlinedButton(
-                      onPressed: _scanner.running && !_scanner.paused ? _scanner.pause : null,
-                      style: _squareOut(),
-                      child: Text(s.scanPause),
-                    ),
-                    OutlinedButton(
-                      onPressed: _scanner.running && _scanner.paused ? _scanner.resume : null,
-                      style: _squareOut(),
-                      child: Text(s.scanResume),
-                    ),
-                    OutlinedButton(
-                      onPressed: _scanner.running ? _scanner.stop : null,
-                      style: _squareOut(),
-                      child: Text(s.scanStop),
-                    ),
-                    FilledButton(
-                      onPressed: () => _applyHealthy(toGroup: false),
-                      style: _squareFill(GuruTheme.teal, const Color(0xFFF4F1EA)),
-                      child: Text(s.applyEdges),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(_scanner.status, style: const TextStyle(fontSize: 12, color: GuruTheme.sand)),
-                const SizedBox(height: 10),
-                Text(s.groups, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _groupNameCtrl,
-                        decoration: _dense(s.groupName),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton(
-                      onPressed: () => _applyHealthy(toGroup: true),
-                      style: _squareFill(GuruTheme.sand, GuruTheme.ink),
-                      child: Text(s.saveGroup),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                if (groups.isEmpty)
-                  Text(s.noGroups, style: const TextStyle(fontSize: 12, color: Color(0xFF8FA3A7)))
-                else
-                  ...groups.map((g) => _groupTile(g, s, state)),
-              ],
-            ),
-          ),
+          Expanded(flex: 5, child: ListView(children: controls.sublist(0, controls.length - 2))),
           const SizedBox(width: 12),
           Expanded(
             flex: 4,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                border: Border.all(color: GuruTheme.line),
-                color: GuruTheme.panel,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
-                    child: Row(
-                      children: [
-                        Text(
-                          '${s.healthy}: ${_scanner.healthy.length}',
-                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
-                        ),
-                        const Spacer(),
-                        TextButton(
-                          onPressed: _scanner.healthy.isEmpty
-                              ? null
-                              : () {
-                                  _scanner.healthy.sort((a, b) => a.latencyMs.compareTo(b.latencyMs));
-                                  setState(() {});
-                                },
-                          child: Text(s.sortBySpeed, style: const TextStyle(fontSize: 11)),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Expanded(
-                    child: ListView.builder(
-                      itemCount: _scanner.healthy.length,
-                      itemBuilder: (context, i) {
-                        final hit = _scanner.healthy[i];
-                        return ListTile(
-                          dense: true,
-                          leading: Text('#${i + 1}', style: const TextStyle(fontSize: 11, color: GuruTheme.sand)),
-                          title: Text(hit.ip, style: const TextStyle(fontFamily: 'Consolas', fontSize: 13)),
-                          subtitle: Text(
-                            '${hit.latencyMs} ms · ${hit.message}'
-                            '${hit.sni.isNotEmpty ? " · ${hit.sni}" : ""}',
-                            style: const TextStyle(fontSize: 11),
-                          ),
-                          onTap: () {
-                            final cur = _manualCtrl.text.trim();
-                            if (!cur.contains(hit.ip)) {
-                              _manualCtrl.text = cur.isEmpty ? hit.ip : '$cur\n${hit.ip}';
-                              setState(() {});
-                            }
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
+            child: _HealthyPanel(
+              scanner: _scanner,
+              s: s,
+              fillHeight: true,
+              onSort: () => setState(() {
+                _scanner.healthy.sort((a, b) => a.latencyMs.compareTo(b.latencyMs));
+              }),
+              onTapIp: (ip) {
+                final cur = _manualCtrl.text.trim();
+                if (!cur.contains(ip)) {
+                  _manualCtrl.text = cur.isEmpty ? ip : '$cur\n$ip';
+                  setState(() {});
+                }
+              },
             ),
           ),
         ],
@@ -689,10 +655,7 @@ class _WhiteIpPageState extends State<WhiteIpPage> {
     return Card(
       margin: const EdgeInsets.only(bottom: 6),
       color: GuruTheme.panel,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.zero,
-        side: const BorderSide(color: GuruTheme.line),
-      ),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero, side: BorderSide(color: GuruTheme.line)),
       child: Column(
         children: [
           ListTile(
@@ -705,10 +668,8 @@ class _WhiteIpPageState extends State<WhiteIpPage> {
               style: const TextStyle(fontSize: 11),
             ),
             trailing: Wrap(
-              spacing: 0,
               children: [
                 IconButton(
-                  tooltip: s.expandGroup,
                   icon: Icon(open ? Icons.expand_less : Icons.expand_more, size: 20),
                   onPressed: () => setState(() => _expandedGroup = open ? null : g.name),
                 ),
@@ -728,14 +689,13 @@ class _WhiteIpPageState extends State<WhiteIpPage> {
                       _keepDefaults = ordered.keepDefaults;
                     });
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('${s.loadedGroup} “${ordered.name}” (${s.sortBySpeed})')),
+                      SnackBar(content: Text('${s.loadedGroup} “${ordered.name}”')),
                     );
                     state.go(AppSection.connect);
                   },
                   child: Text(s.useGroup),
                 ),
                 IconButton(
-                  tooltip: s.deleteGroup,
                   onPressed: () => state.settings.deleteIpGroup(g.name),
                   icon: const Icon(Icons.delete_outline, size: 18),
                 ),
@@ -750,20 +710,9 @@ class _WhiteIpPageState extends State<WhiteIpPage> {
                   for (var i = 0; i < sorted.entries.length; i++)
                     Row(
                       children: [
-                        SizedBox(
-                          width: 28,
-                          child: Text('#${i + 1}', style: const TextStyle(fontSize: 11, color: GuruTheme.sand)),
-                        ),
-                        Expanded(
-                          child: Text(
-                            sorted.entries[i].ip,
-                            style: const TextStyle(fontFamily: 'Consolas', fontSize: 12),
-                          ),
-                        ),
-                        Text(
-                          sorted.entries[i].latencyMs > 0 ? '${sorted.entries[i].latencyMs} ms' : '—',
-                          style: const TextStyle(fontSize: 11, color: Color(0xFF8FA3A7)),
-                        ),
+                        SizedBox(width: 28, child: Text('#${i + 1}', style: const TextStyle(fontSize: 11, color: GuruTheme.sand))),
+                        Expanded(child: Text(sorted.entries[i].ip, style: const TextStyle(fontFamily: 'Consolas', fontSize: 12))),
+                        Text(sorted.entries[i].latencyMs > 0 ? '${sorted.entries[i].latencyMs} ms' : '—', style: const TextStyle(fontSize: 11, color: Color(0xFF8FA3A7))),
                       ],
                     ),
                 ],
@@ -777,11 +726,7 @@ class _WhiteIpPageState extends State<WhiteIpPage> {
   Widget _numField(TextEditingController c, String label, double w) {
     return SizedBox(
       width: w,
-      child: TextField(
-        controller: c,
-        keyboardType: TextInputType.number,
-        decoration: _dense(label),
-      ),
+      child: TextField(controller: c, keyboardType: TextInputType.number, decoration: _dense(label)),
     );
   }
 
@@ -796,11 +741,89 @@ class _WhiteIpPageState extends State<WhiteIpPage> {
         backgroundColor: bg,
         foregroundColor: fg,
         shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        minimumSize: const Size(48, 44),
       );
 
   ButtonStyle _squareOut() => OutlinedButton.styleFrom(
         shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        minimumSize: const Size(48, 44),
       );
+}
+
+class _HealthyPanel extends StatelessWidget {
+  const _HealthyPanel({
+    required this.scanner,
+    required this.s,
+    required this.onTapIp,
+    required this.onSort,
+    this.fillHeight = false,
+  });
+
+  final EdgeScanner scanner;
+  final S s;
+  final void Function(String ip) onTapIp;
+  final VoidCallback onSort;
+  final bool fillHeight;
+
+  @override
+  Widget build(BuildContext context) {
+    final list = scanner.healthy.isEmpty
+        ? <Widget>[
+            const Padding(
+              padding: EdgeInsets.all(12),
+              child: Text('No healthy IPs yet. Tap Start scan / Auto-find above.',
+                  style: TextStyle(fontSize: 12, color: Color(0xFF8FA3A7))),
+            ),
+          ]
+        : [
+            for (var i = 0; i < scanner.healthy.length; i++)
+              ListTile(
+                dense: true,
+                leading: Text('#${i + 1}', style: const TextStyle(fontSize: 11, color: GuruTheme.sand)),
+                title: Text(scanner.healthy[i].ip, style: const TextStyle(fontFamily: 'Consolas', fontSize: 13)),
+                subtitle: Text(
+                  '${scanner.healthy[i].latencyMs} ms · ${scanner.healthy[i].message}'
+                  '${scanner.healthy[i].sni.isNotEmpty ? " · ${scanner.healthy[i].sni}" : ""}',
+                  style: const TextStyle(fontSize: 11),
+                ),
+                onTap: () => onTapIp(scanner.healthy[i].ip),
+              ),
+          ];
+
+    final header = Padding(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+      child: Row(
+        children: [
+          Text('${s.healthy}: ${scanner.healthy.length}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+          const Spacer(),
+          TextButton(
+            onPressed: scanner.healthy.isEmpty ? null : onSort,
+            child: Text(s.sortBySpeed, style: const TextStyle(fontSize: 11)),
+          ),
+        ],
+      ),
+    );
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border.all(color: GuruTheme.line),
+        color: GuruTheme.panel,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: fillHeight
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                header,
+                Expanded(child: ListView(children: list)),
+              ],
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [header, ...list],
+            ),
+    );
+  }
 }
