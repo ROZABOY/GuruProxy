@@ -163,6 +163,15 @@ class TunnelEngine extends ChangeNotifier {
       _workDir = Directory('$local${Platform.pathSeparator}GuruProxy${Platform.pathSeparator}tunnel-core');
       await _workDir!.create(recursive: true);
 
+      final socks = settings.localSocksPort;
+      final http = settings.localHttpPort;
+      if (socks == 8088 || http == 8089 || socks == 8089 || http == 8088) {
+        _append('Ports $socks/$http collide with Se7en Pro defaults — switching to 17888/17889.');
+        settings.localSocksPort = 17888;
+        settings.localHttpPort = 17889;
+      }
+      _append('Local proxies: SOCKS=${settings.localSocksPort} HTTP=${settings.localHttpPort}');
+
       final configPath = File('${_workDir!.path}${Platform.pathSeparator}config.json');
       await configPath.writeAsString(_buildConfigJson());
 
@@ -522,7 +531,6 @@ class TunnelEngine extends ChangeNotifier {
     final mode = settings.protocolMode;
     final socks = settings.localSocksPort;
     final http = settings.localHttpPort;
-    _append('Local proxies: SOCKS=$socks HTTP=$http');
 
     final cfg = <String, dynamic>{
       'ClientPlatform': '${net.clientPlatform}_${Platform.operatingSystemVersion}',
@@ -547,6 +555,40 @@ class TunnelEngine extends ChangeNotifier {
       'LocalHttpProxyPort': http,
       'LocalSocksProxyPort': socks,
     };
+
+    // Local listen mode — does NOT touch CDN dial overrides.
+    final listen = settings.proxyListenMode;
+    if (listen == 'socks') {
+      cfg['DisableLocalHTTPProxy'] = true;
+      cfg['DisableLocalSocksProxy'] = false;
+      _append('Proxy listen: SOCKS only (:$socks)');
+    } else if (listen == 'http') {
+      cfg['DisableLocalSocksProxy'] = true;
+      cfg['DisableLocalHTTPProxy'] = false;
+      _append('Proxy listen: HTTP only (:$http)');
+    } else {
+      cfg['DisableLocalSocksProxy'] = false;
+      cfg['DisableLocalHTTPProxy'] = false;
+      _append('Proxy listen: mixed SOCKS :$socks + HTTP :$http');
+    }
+
+    // Stability profile — safe knobs only (no dial/protocol changes).
+    if (settings.connectionProfile == 'stable') {
+      // Longer network timeouts help on lossy IR links. Not BBR.
+      cfg['NetworkLatencyMultiplier'] = 1.5;
+      _append('Connection profile: stable (latency multiplier 1.5)');
+      if (settings.redundantTunnel) {
+        cfg['TunnelPoolSize'] = 2;
+        _append('Redundant tunnel pool: 2');
+      }
+    } else {
+      _append('Connection profile: normal');
+    }
+
+    // Match Se7en ClientPlatform style: Windows_<osVersion>
+    final osVer = Platform.operatingSystemVersion;
+    final m = RegExp(r'(\d+\.\d+)').firstMatch(osVer);
+    cfg['ClientPlatform'] = 'Windows_${m?.group(1) ?? '10.0'}';
 
     final egress = EgressRegions.toConfigValue(settings.egressRegion);
     if (egress.isNotEmpty) {
@@ -607,18 +649,18 @@ class TunnelEngine extends ChangeNotifier {
         settings.cdnProvider.trim().isEmpty ? 'cloudflare' : settings.cdnProvider,
       );
 
-      _append('CDN preference: Cloudflare → Google → Akamai (OSSH uses Akamai catch-alls)');
+      _append('Dial overrides: Se7en-identical catch-all edges (.*)');
       _append('Active whitelist group: ${settings.activeGroupName.isEmpty ? "(custom/none)" : settings.activeGroupName}');
-      _note('CDN · CF scoped + Akamai OSSH fallback · ${settings.activeGroupName.isEmpty ? "-" : settings.activeGroupName}');
+      _note('CDN · Se7en dials · ${settings.activeGroupName.isEmpty ? "-" : settings.activeGroupName}');
       if (settings.sniOverrideEnabled && settings.customSnis.trim().isNotEmpty) {
         _append('SNI override on');
       }
       if (hasUserIps && !includeDefaults) {
-        _append('CF-only whitelist (no Akamai fallback) — may fail if IPs are not Psiphon fronts.');
+        _append('Custom IPs only (Auto-find off) — Se7en same rule.');
       } else if (hasUserIps) {
-        _append('CF whitelist scoped to Cloudflare dials; Akamai Se7en edges for OSSH.');
+        _append('Custom IPs as catch-all .* + Se7en Akamai edges (same as working Se7en).');
       } else {
-        _append('Built-in Se7en Akamai edges + CF/Google scoped overrides.');
+        _append('Built-in Se7en Akamai edges only.');
       }
 
       final overrides = FrontingDialBuilder.buildDialOverrides(
@@ -632,21 +674,23 @@ class TunnelEngine extends ChangeNotifier {
       final firstId = overrides.isEmpty ? '-' : overrides.first['OverrideID'];
       String? catchAllId;
       Object? catchAllDial;
+      Object? catchAllSni;
       for (final o in overrides) {
         final m = o['MatchDialAddressRegexes'];
         if (m is List && m.contains('.*')) {
           catchAllId = o['OverrideID']?.toString();
           catchAllDial = o['DialAddresses'];
+          catchAllSni = o['SNIServerName'];
           break;
         }
       }
       _append('Dial overrides: ${overrides.length} · first=$firstId');
       if (catchAllId != null) {
-        _append('First OSSH catch-all: $catchAllId → $catchAllDial');
+        _append('First catch-all: $catchAllId → $catchAllDial SNI=$catchAllSni');
       }
       if (hasUserIps) {
         final ips = FrontingDialBuilder.parseIps(settings.customIps).take(5).join(', ');
-        _append('CF whitelist (scoped): $ips');
+        _append('Whitelist IPs (catch-all): $ips');
       }
     } else if (mode == 'direct') {
       cfg['LimitTunnelProtocols'] = [
@@ -662,8 +706,10 @@ class TunnelEngine extends ChangeNotifier {
 
     if (settings.blockedApps.isNotEmpty) {
       _append(
-        'Blocked apps saved (${settings.blockedApps.length}): '
-        'enforced only with TUN/process routing (not with plain SOCKS/HTTP).',
+        'Exclude apps saved (${settings.blockedApps.length}): '
+        '${settings.blockedApps.take(5).join(", ")}'
+        '${settings.blockedApps.length > 5 ? "…" : ""}. '
+        'SOCKS/HTTP cannot force process bypass (same as Se7en without TUN).',
       );
     }
 

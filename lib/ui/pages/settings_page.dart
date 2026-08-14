@@ -137,12 +137,28 @@ class _SettingsPageState extends State<SettingsPage> {
           },
         ),
         const SizedBox(height: 10),
+        DropdownButtonFormField<String>(
+          initialValue: settings.proxyListenMode,
+          decoration: InputDecoration(labelText: s.proxyListenMode, border: const OutlineInputBorder()),
+          items: [
+            DropdownMenuItem(value: 'mixed', child: Text(s.proxyListenMixed)),
+            DropdownMenuItem(value: 'socks', child: Text(s.proxyListenSocks)),
+            DropdownMenuItem(value: 'http', child: Text(s.proxyListenHttp)),
+          ],
+          onChanged: (v) {
+            if (v != null) setState(() => settings.proxyListenMode = v);
+          },
+        ),
+        const SizedBox(height: 4),
+        Text(s.proxyListenHint, style: const TextStyle(fontSize: 11, color: Color(0xFF8FA3A7))),
+        const SizedBox(height: 10),
         Row(
           children: [
             Expanded(
               child: TextField(
                 controller: _socks,
                 keyboardType: TextInputType.number,
+                enabled: settings.proxyListenMode != 'http',
                 decoration: InputDecoration(labelText: s.socksPort, border: const OutlineInputBorder()),
               ),
             ),
@@ -151,10 +167,35 @@ class _SettingsPageState extends State<SettingsPage> {
               child: TextField(
                 controller: _http,
                 keyboardType: TextInputType.number,
+                enabled: settings.proxyListenMode != 'socks',
                 decoration: InputDecoration(labelText: s.httpPort, border: const OutlineInputBorder()),
               ),
             ),
           ],
+        ),
+        const SizedBox(height: 10),
+        DropdownButtonFormField<String>(
+          initialValue: settings.connectionProfile,
+          decoration: InputDecoration(labelText: s.connectionProfile, border: const OutlineInputBorder()),
+          items: [
+            DropdownMenuItem(value: 'normal', child: Text(s.connectionNormal)),
+            DropdownMenuItem(value: 'stable', child: Text(s.connectionStable)),
+          ],
+          onChanged: (v) {
+            if (v != null) setState(() => settings.connectionProfile = v);
+          },
+        ),
+        const SizedBox(height: 4),
+        Text(s.connectionProfileHint, style: const TextStyle(fontSize: 11, color: Color(0xFF8FA3A7))),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text(s.redundantTunnel),
+          subtitle: Text(s.redundantTunnelHint, style: const TextStyle(fontSize: 11)),
+          value: settings.redundantTunnel,
+          activeThumbColor: GuruTheme.sand,
+          onChanged: settings.connectionProfile == 'stable'
+              ? (v) => settings.redundantTunnel = v
+              : null,
         ),
         const SizedBox(height: 10),
         TextField(
@@ -244,12 +285,31 @@ class _SettingsPageState extends State<SettingsPage> {
         const SizedBox(height: 6),
         TextField(
           controller: _blockedApps,
-          maxLines: 4,
+          maxLines: 5,
           decoration: InputDecoration(
             labelText: s.blockedAppsList,
-            hintText: 'photoshop.exe\ncoreldraw.exe',
+            hintText: 'photoshop.exe\ncoreldraw.exe\nsteam.exe',
             border: const OutlineInputBorder(),
+            helperText: 'Saved exclude list (SOCKS cannot force it — same limit as Se7en)',
+            helperMaxLines: 2,
           ),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final name in const ['photoshop.exe', 'steam.exe', 'discord.exe', 'spotify.exe'])
+              ActionChip(
+                label: Text(name, style: const TextStyle(fontSize: 11)),
+                onPressed: () {
+                  final cur = _blockedApps.text.trim();
+                  if (cur.toLowerCase().contains(name)) return;
+                  _blockedApps.text = cur.isEmpty ? name : '$cur\n$name';
+                  setState(() {});
+                },
+              ),
+          ],
         ),
         const SizedBox(height: 14),
         Align(
@@ -259,8 +319,8 @@ class _SettingsPageState extends State<SettingsPage> {
               settings.customIps = _ips.text;
               settings.customSnis = _snis.text;
               settings.egressRegion = _region.text.trim().isEmpty ? 'US' : _region.text.trim();
-              settings.localSocksPort = int.tryParse(_socks.text.trim()) ?? 1081;
-              settings.localHttpPort = int.tryParse(_http.text.trim()) ?? 8081;
+              settings.localSocksPort = int.tryParse(_socks.text.trim()) ?? 17888;
+              settings.localHttpPort = int.tryParse(_http.text.trim()) ?? 17889;
               settings.establishTimeoutSec = int.tryParse(_timeout.text.trim()) ?? 120;
               settings.upstreamProxyUrl = _upstream.text;
               settings.upstreamProxyUser = _upstreamUser.text;

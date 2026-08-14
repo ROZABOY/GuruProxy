@@ -177,9 +177,22 @@ class ConnectPage extends StatelessWidget {
                           ? '(none / custom)'
                           : state.settings.activeGroupName,
                     ),
-                    _kv('CDN', 'CF scoped · Akamai OSSH (Se7en)'),
-                    _kv(s.socks, tunnel.socksPort == 0 ? '${state.settings.localSocksPort}' : '${tunnel.socksPort}'),
-                    _kv(s.http, tunnel.httpPort == 0 ? '${state.settings.localHttpPort}' : '${tunnel.httpPort}'),
+                    _kv('CDN', 'Se7en-identical dials'),
+                    _kv('Listen', switch (state.settings.proxyListenMode) {
+                      'socks' => 'SOCKS only',
+                      'http' => 'HTTP only',
+                      _ => 'Mixed SOCKS+HTTP',
+                    }),
+                    if (state.settings.proxyListenMode != 'http')
+                      _kv(s.socks, tunnel.socksPort == 0 ? '${state.settings.localSocksPort}' : '${tunnel.socksPort}'),
+                    if (state.settings.proxyListenMode != 'socks')
+                      _kv(s.http, tunnel.httpPort == 0 ? '${state.settings.localHttpPort}' : '${tunnel.httpPort}'),
+                    _kv(
+                      'Profile',
+                      state.settings.connectionProfile == 'stable'
+                          ? (state.settings.redundantTunnel ? 'Stable + 2 tunnels' : 'Stable')
+                          : 'Normal',
+                    ),
                     if (tunnel.routeIp.isNotEmpty)
                       _kv('Edge', '${tunnel.routeIp}${tunnel.routeSni.isNotEmpty ? " · ${tunnel.routeSni}" : ""}'),
                     const SizedBox(height: 8),

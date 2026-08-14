@@ -1,14 +1,15 @@
 import 'dart:convert';
 
-/// Exact Se7en/GuruProxy_v1 dial-override strategy + Cloudflare scoped extras.
+/// Exact port of Se7en Pro `CdnFrontingBuilder` — this is what connects.
 ///
-/// Working Se7en connect uses Akamai catch-all edges with Akamai SNI
-/// (`a248.e.akamai.net`) and FRONTED-MEEK-OSSH. Applying Cloudflare SNI to
-/// those Akamai IPs causes Meek 400/404 — that was the GuruProxy bug.
+/// Live working Se7en config uses:
+/// - custom IPs as catch-all `MatchDialAddressRegexes: [".*"]` (`edge-custom-N`)
+/// - built-in Akamai edges also `.*`, with SNI = first custom SNI when set
+///   (often `www.cloudflare.com`), NOT forced `a248.e.akamai.net`
 class FrontingDialBuilder {
-  static const maxCustomIps = 16;
+  static const maxCustomIps = 32;
 
-  static const akamaiEdgeIps = <(String, String)>[
+  static const defaultEdgeIps = <(String, String)>[
     ('edge-a-1', '23.215.0.206'),
     ('edge-a-2', '23.215.0.203'),
     ('edge-b-1', '23.212.250.91'),
@@ -46,7 +47,23 @@ class FrontingDialBuilder {
     'pypi.org',
     'fastly.com',
     'www.fastly.com',
+    'developer.fastly.com',
+    'githubassets.com',
     'github.com',
+    'github.io',
+    'githubusercontent.com',
+  ];
+  static const amazonVerify = [
+    'd1.cloudfront.net',
+    'cloudfront.net',
+    's3.amazonaws.com',
+    'aws.amazon.com',
+  ];
+  static const azureVerify = [
+    'ajax.aspnetcdn.com',
+    'cdn.office.net',
+    'static.azureedge.net',
+    'az.msecnd.net',
   ];
 
   static String normalizeProvider(String? id) {
@@ -54,15 +71,23 @@ class FrontingDialBuilder {
       case 'cloudflare':
       case 'cf':
         return 'cloudflare';
+      case 'fastly':
+        return 'fastly';
       case 'google':
       case 'gcdn':
       case 'gcp':
         return 'google';
-      case 'fastly':
-        return 'fastly';
+      case 'amazon':
+        return 'amazon';
+      case 'azure':
+        return 'azure';
+      case 'iran-isp':
+        return 'akamai';
       case 'akamai':
         return 'akamai';
       default:
+        // Se7en default when unset is akamai; GuruProxy UI prefers cloudflare
+        // but either works with catch-all custom IPs.
         return 'cloudflare';
     }
   }
@@ -87,6 +112,7 @@ class FrontingDialBuilder {
     for (final part in raw.split(RegExp(r'[\s,;]+'))) {
       final host = part.trim();
       if (host.isEmpty || _isIpv4(host) || !seen.add(host.toLowerCase())) continue;
+      if (!_isHostname(host)) continue;
       out.add(host);
     }
     return out;
@@ -98,13 +124,12 @@ class FrontingDialBuilder {
     bool includeBuiltInDefaults = true,
     String? providerId,
   }) {
-    final preferred = normalizeProvider(providerId);
+    final provider = normalizeProvider(providerId);
     final overrides = <Map<String, dynamic>>[];
     final edgeDialAddresses = <String>{};
     final snis = parseSnis(customSni);
-    final customIps = parseIps(customIpList);
+    final primarySni = snis.isNotEmpty ? snis.first : '';
 
-    // --- Se7en order: Fastly scoped ---
     if (includeBuiltInDefaults) {
       overrides.add(_makeOverride(
         overrideId: 'fastly-provider',
@@ -124,81 +149,30 @@ class FrontingDialBuilder {
       ));
     }
 
-    // --- Cloudflare custom IPs: SCOPED only (never `.*`, never on Akamai SNI) ---
-    if (preferred == 'cloudflare' || preferred == 'google' || preferred == 'fastly') {
-      for (var i = 0; i < customIps.length; i++) {
-        final ip = customIps[i];
-        if (!edgeDialAddresses.add(ip)) continue;
-        final sni = snis.isNotEmpty ? snis[i % snis.length] : _defaultSni(preferred);
-        if (preferred == 'cloudflare') {
-          overrides.add(_makeOverride(
-            overrideId: 'cf-user-${i + 1}',
-            matchFrontingProviderIdRegexes: [r'(?i)cloudflare'],
-            matchDialAddressRegexes: [r'(?i)(cloudflare|cdnjs|workers\.dev)'],
-            dialAddress: ip,
-            sniServerName: sni,
-            verifyServerNames: {sni, ip, ...cloudflareVerify}.toList(),
-            alpn: const ['h2', 'http/1.1'],
-          ));
-        } else if (preferred == 'google') {
-          overrides.add(_makeOverride(
-            overrideId: 'google-user-${i + 1}',
-            matchFrontingProviderIdRegexes: [r'(?i)(google|gcdn|gcp)'],
-            matchDialAddressRegexes: [r'(?i)(gstatic|googleapis|google\.com)'],
-            dialAddress: ip,
-            sniServerName: sni,
-            verifyServerNames: {sni, ip, ...googleVerify}.toList(),
-            alpn: const ['h2', 'http/1.1'],
-          ));
-        } else {
-          overrides.add(_makeOverride(
-            overrideId: 'fastly-user-${i + 1}',
-            matchFrontingProviderIdRegexes: [r'(?i)fastly'],
-            matchDialAddressRegexes: [r'(?i)(fastly|pypi|python|github)'],
-            dialAddress: ip,
-            sniServerName: sni,
-            verifyServerNames: {sni, ip, ...fastlyVerify}.toList(),
-            alpn: const ['h2', 'http/1.1'],
-          ));
-        }
-      }
-    } else {
-      // Akamai/custom provider: Se7en-style catch-all custom edges with Akamai SNI.
-      for (var i = 0; i < customIps.length; i++) {
-        final ip = customIps[i];
-        _putCatchAllEdge(
-          overrides,
-          edgeDialAddresses,
-          'edge-custom-${i + 1}',
-          ip,
-          'a248.e.akamai.net',
-          'akamai',
-        );
-      }
+    // Se7en: every custom IP is a catch-all `.*` edge override.
+    final customIps = parseIps(customIpList);
+    for (var i = 0; i < customIps.length; i++) {
+      final sniForIp = snis.isNotEmpty ? snis[i % snis.length] : '';
+      _putEdgeOverride(
+        overrides,
+        edgeDialAddresses,
+        'edge-custom-${i + 1}',
+        customIps[i],
+        sniForIp,
+        provider,
+      );
     }
 
     if (includeBuiltInDefaults) {
-      // Se7en Akamai catch-alls — ALWAYS Akamai SNI (this is what connects).
-      for (final e in akamaiEdgeIps) {
-        _putCatchAllEdge(
+      // Se7en: Akamai built-ins use primarySni when set (often Cloudflare SNI).
+      for (final e in defaultEdgeIps) {
+        _putEdgeOverride(
           overrides,
           edgeDialAddresses,
           e.$1,
           e.$2,
-          'a248.e.akamai.net',
+          primarySni,
           'akamai',
-        );
-      }
-    } else if (customIps.isNotEmpty && preferred == 'cloudflare') {
-      // Explicit CF-only mode (risky).
-      for (var i = 0; i < customIps.length; i++) {
-        _putCatchAllEdge(
-          overrides,
-          edgeDialAddresses,
-          'cf-only-${i + 1}',
-          customIps[i],
-          snis.isNotEmpty ? snis[i % snis.length] : _defaultSni('cloudflare'),
-          'cloudflare',
         );
       }
     }
@@ -206,44 +180,58 @@ class FrontingDialBuilder {
     return overrides;
   }
 
-  static String _defaultSni(String provider) => switch (provider) {
-        'cloudflare' => 'www.cloudflare.com',
-        'google' => 'www.gstatic.com',
-        'fastly' => 'pypi.org',
-        _ => 'a248.e.akamai.net',
-      };
-
-  static void _putCatchAllEdge(
+  static void _putEdgeOverride(
     List<Map<String, dynamic>> overrides,
     Set<String> dialAddresses,
-    String id,
-    String ip,
-    String sni,
-    String provider,
+    String overrideId,
+    String ipAddress,
+    String customSni,
+    String providerId,
   ) {
-    if (!dialAddresses.add(ip)) return;
-    final alpn = (provider == 'cloudflare' || provider == 'fastly' || provider == 'google')
+    if (!dialAddresses.add(ipAddress)) return;
+    // Se7en: empty custom SNI → use the IP itself as SNIServerName.
+    final sniServerName = customSni.trim().isEmpty ? ipAddress : customSni.trim();
+    final alpn = (providerId == 'cloudflare' || providerId == 'fastly' || providerId == 'google')
         ? const ['h2', 'http/1.1']
         : const ['http/1.1'];
-    final verify = <String>{sni, ip, ..._verifyNames(provider)}.toList();
     overrides.add(_makeOverride(
-      overrideId: id,
+      overrideId: overrideId,
       matchDialAddressRegexes: ['.*'],
-      dialAddress: ip,
-      sniServerName: sni,
-      verifyServerNames: verify,
+      dialAddress: ipAddress,
+      sniServerName: sniServerName,
+      verifyServerNames: _buildEdgeVerify(providerId, ipAddress, sniServerName),
       alpn: alpn,
     ));
   }
 
-  static List<String> _verifyNames(String provider) {
-    switch (provider) {
+  static List<String> _buildEdgeVerify(String providerId, String ip, String sni) {
+    final list = <String>[];
+    final seen = <String>{};
+    void add(String? v) {
+      if (v == null || v.isEmpty) return;
+      if (seen.add(v)) list.add(v);
+    }
+
+    add(sni);
+    add(ip);
+    for (final n in _providerVerify(providerId)) {
+      add(n);
+    }
+    return list;
+  }
+
+  static List<String> _providerVerify(String providerId) {
+    switch (providerId) {
       case 'cloudflare':
         return cloudflareVerify;
-      case 'google':
-        return googleVerify;
       case 'fastly':
         return fastlyVerify;
+      case 'google':
+        return googleVerify;
+      case 'amazon':
+        return amazonVerify;
+      case 'azure':
+        return azureVerify;
       default:
         return akamaiVerify;
     }
@@ -281,6 +269,28 @@ class FrontingDialBuilder {
     for (final p in parts) {
       final v = int.tryParse(p);
       if (v == null || v < 0 || v > 255) return false;
+    }
+    return true;
+  }
+
+  static bool _isHostname(String hostname) {
+    if (hostname.isEmpty || hostname.length > 253) return false;
+    if (_isIpv4(hostname)) return false;
+    var normalised = hostname;
+    if (normalised.endsWith('.')) {
+      normalised = normalised.substring(0, normalised.length - 1);
+    }
+    if (normalised.isEmpty) return false;
+    for (final label in normalised.split('.')) {
+      if (label.isEmpty || label.length > 63) return false;
+      if (label.startsWith('-') || label.endsWith('-')) return false;
+      for (final c in label.codeUnits) {
+        final ok = (c >= 97 && c <= 122) ||
+            (c >= 65 && c <= 90) ||
+            (c >= 48 && c <= 57) ||
+            c == 45;
+        if (!ok) return false;
+      }
     }
     return true;
   }

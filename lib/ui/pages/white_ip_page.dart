@@ -439,7 +439,7 @@ class _WhiteIpPageState extends State<WhiteIpPage> {
                 const SizedBox(height: 6),
                 Text(
                   'Active whitelist: ${state.settings.activeGroupName.trim().isEmpty ? "(none)" : state.settings.activeGroupName}'
-                  ' · CF scoped + Akamai OSSH fallback',
+                  ' · Se7en-identical catch-all dials',
                   style: const TextStyle(fontSize: 12, color: GuruTheme.sand, fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 10),

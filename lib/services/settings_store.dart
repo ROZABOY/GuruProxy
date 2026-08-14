@@ -27,18 +27,27 @@ class SettingsStore extends ChangeNotifier {
   /// Apply v2.2 defaults: Cloudflare + known-working CF list (once).
   Future<void> ensureV22CloudflarePreset(String csvAssetText) async {
     final schema = _prefs.getInt('settingsSchema') ?? 0;
-    // Schema 6 = Akamai edges always use a248.e.akamai.net (never CF SNI).
-    if (schema >= 6 && customIps.trim().isNotEmpty && activeGroupName == 'known-working') {
+    // Schema 8 = ports 17888/17889 (leave 8088/8089 for Se7en Pro).
+    if (schema >= 8 && customIps.trim().isNotEmpty && activeGroupName == 'known-working') {
+      // Still migrate off Se7en ports if user somehow still has them.
+      if (localSocksPort == 8088 || localHttpPort == 8089) {
+        localSocksPort = 17888;
+        localHttpPort = 17889;
+      }
       return;
     }
 
     cdnProvider = 'cloudflare';
     sniOverrideEnabled = true;
-    customSnis = 'www.cloudflare.com\ncdnjs.cloudflare.com';
+    customSnis =
+        'www.cloudflare.com\nak.net.akamaized.net\ncloudflare.com\nsnapp.ir\ndigikala.com\ngoogle.com';
     // Keep Se7en Akamai catch-alls so FRONTED-MEEK-OSSH can connect.
     autoFindIpAndSni = true;
     protocolMode = 'cdn_fronting';
     beastMode = true;
+    localSocksPort = 17888;
+    localHttpPort = 17889;
+    establishTimeoutSec = 90;
 
     // Parse CSV without importing ip_list_csv cycle in setter path — inline.
     final ips = <String>[];
@@ -60,6 +69,9 @@ class SettingsStore extends ChangeNotifier {
     customIps = ips.join('\n');
     activeGroupName = 'known-working';
     autoFindIpAndSni = true;
+    localSocksPort = 17888;
+    localHttpPort = 17889;
+    establishTimeoutSec = 90;
     upsertIpGroup(IpGroup(
       name: 'known-working',
       ips: customIps,
@@ -68,7 +80,7 @@ class SettingsStore extends ChangeNotifier {
       keepDefaults: true,
       entries: entries,
     ));
-    await _prefs.setInt('settingsSchema', 6);
+    await _prefs.setInt('settingsSchema', 8);
   }
 
   String get activeGroupName => _prefs.getString('activeGroupName') ?? '';
@@ -173,23 +185,55 @@ class SettingsStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  int get establishTimeoutSec => _prefs.getInt('establishTimeoutSec') ?? 120;
+  int get establishTimeoutSec => _prefs.getInt('establishTimeoutSec') ?? 90;
   set establishTimeoutSec(int v) {
     _prefs.setInt('establishTimeoutSec', v.clamp(30, 600));
     notifyListeners();
   }
 
-  int get localSocksPort => _prefs.getInt('localSocksPort') ?? 1081;
+  int get localSocksPort => _prefs.getInt('localSocksPort') ?? 17888;
   set localSocksPort(int v) {
-    _prefs.setInt('localSocksPort', _sanitizePort(v, 1081));
+    _prefs.setInt('localSocksPort', _sanitizePort(v, 17888));
     notifyListeners();
   }
 
-  int get localHttpPort => _prefs.getInt('localHttpPort') ?? 8081;
+  int get localHttpPort => _prefs.getInt('localHttpPort') ?? 17889;
   set localHttpPort(int v) {
-    _prefs.setInt('localHttpPort', _sanitizePort(v, 8081));
+    _prefs.setInt('localHttpPort', _sanitizePort(v, 17889));
     notifyListeners();
   }
+
+  /// mixed = SOCKS+HTTP (default), socks = SOCKS only, http = HTTP only.
+  String get proxyListenMode => _prefs.getString('proxyListenMode') ?? 'mixed';
+  set proxyListenMode(String v) {
+    final n = switch (v.trim().toLowerCase()) {
+      'socks' || 'socks5' => 'socks',
+      'http' || 'https' => 'http',
+      _ => 'mixed',
+    };
+    _prefs.setString('proxyListenMode', n);
+    notifyListeners();
+  }
+
+  /// normal = current working defaults.
+  /// stable = gentler timeouts for lossy links (not BBR — Psiphon has no BBR).
+  String get connectionProfile => _prefs.getString('connectionProfile') ?? 'normal';
+  set connectionProfile(String v) {
+    final n = v.trim().toLowerCase() == 'stable' ? 'stable' : 'normal';
+    _prefs.setString('connectionProfile', n);
+    notifyListeners();
+  }
+
+  /// Run 2 tunnels when stable profile is on (failover / smoother browsing).
+  bool get redundantTunnel => _prefs.getBool('redundantTunnel') ?? false;
+  set redundantTunnel(bool v) {
+    _prefs.setBool('redundantTunnel', v);
+    notifyListeners();
+  }
+
+  /// Apps that should not use the proxy (exclude list).
+  List<String> get excludedApps => blockedApps;
+  set excludedApps(List<String> apps) => blockedApps = apps;
 
   /// Exe names that should bypass proxy once TUN routing lands (e.g. photoshop.exe).
   List<String> get blockedApps {

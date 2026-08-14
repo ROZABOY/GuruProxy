@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../app_state.dart';
@@ -23,6 +24,21 @@ class LogPage extends StatelessWidget {
             children: [
               Text(s.menuLog, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
               const Spacer(),
+              TextButton(
+                onPressed: lines.isEmpty
+                    ? null
+                    : () async {
+                        // Copy oldest→newest (natural reading order).
+                        final text = lines.join('\n');
+                        await Clipboard.setData(ClipboardData(text: text));
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(s.logCopied)),
+                          );
+                        }
+                      },
+                child: Text(s.copyLog),
+              ),
               TextButton(
                 onPressed: state.tunnel.clearLog,
                 child: Text(s.clearLog),

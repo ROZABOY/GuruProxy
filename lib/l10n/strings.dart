@@ -2,7 +2,7 @@ class S {
   S(this.fa);
   final bool fa;
 
-  String get appName => 'GuruProxy v2.2';
+  String get appName => 'GuruProxy v2.3';
   String get menuConnect => fa ? 'اتصال' : 'Connect';
   String get menuSession => fa ? 'نشست' : 'Session';
   String get menuWhiteIp => fa ? 'اسکنر IP' : 'White IP';
@@ -24,6 +24,23 @@ class S {
   String get status => fa ? 'وضعیت' : 'Status';
   String get socks => fa ? 'SOCKS' : 'SOCKS';
   String get http => fa ? 'HTTP' : 'HTTP';
+  String get proxyListenMode => fa ? 'حالت پروکسی محلی' : 'Local proxy mode';
+  String get proxyListenMixed => fa ? 'هر دو (SOCKS + HTTP)' : 'Mixed (SOCKS + HTTP)';
+  String get proxyListenSocks => fa ? 'فقط SOCKS5' : 'SOCKS5 only';
+  String get proxyListenHttp => fa ? 'فقط HTTP' : 'HTTP only';
+  String get proxyListenHint => fa
+      ? 'تونل یکی است؛ این فقط مشخص می‌کند کدام پورت محلی روشن باشد. پیش‌فرض: هر دو.'
+      : 'One tunnel; this only chooses which local ports are on. Default: both.';
+  String get connectionProfile => fa ? 'پروفایل اتصال' : 'Connection profile';
+  String get connectionNormal => fa ? 'عادی (همین که کار می‌کند)' : 'Normal (working defaults)';
+  String get connectionStable => fa ? 'پایدارتر (لینک‌های ضعیف)' : 'More stable (lossy links)';
+  String get connectionProfileHint => fa
+      ? 'BBR در Psiphon نیست. حالت پایدار فقط تایم‌اوت‌ها را نرم‌تر می‌کند — دیال‌ها را عوض نمی‌کند.'
+      : 'Psiphon has no BBR. Stable only softens timeouts — dial overrides stay untouched.';
+  String get redundantTunnel => fa ? 'تونل دوم (پایداری بیشتر)' : 'Second tunnel (extra stability)';
+  String get redundantTunnelHint => fa
+      ? 'TunnelPoolSize=2 — کمی سنگین‌تر، قطعی کمتر. فقط با پروفایل پایدار.'
+      : 'TunnelPoolSize=2 — a bit heavier, fewer drops. Only with Stable profile.';
   String get nowDoing => fa ? 'الان چه می‌کند' : 'Now doing';
   String get nowDoingIdle => fa ? 'برای دیدن وضعیت کوتاه، وصل شوید.' : 'Connect to see a short live status.';
   String get region => fa ? 'منطقه' : 'Region';
@@ -60,11 +77,13 @@ class S {
   String get upstreamIgnoredCdn => fa
       ? 'در CDN Fronting نادیده گرفته می‌شود (جلوگیری از 10808 مرده).'
       : 'Ignored in CDN Fronting (avoids dead :10808 proxies).';
-  String get blockedApps => fa ? 'مسدود کردن نرم‌افزارها از پروکسی' : 'Block apps from proxy';
-  String get blockedAppsList => fa ? 'نام فایل‌ها (هر خط یکی)' : 'Exe names (one per line)';
+  String get blockedApps => fa ? 'Exclude apps (bypass proxy)' : 'Exclude apps (bypass proxy)';
+  String get blockedAppsList => fa ? 'Exe names (one per line)' : 'Exe names (one per line)';
   String get blockedAppsHint => fa
-      ? 'با SOCKS/HTTP محلی نمی‌شود بر اساس process فیلتر کرد. لیست ذخیره می‌شود برای TUN بعدی. فعلاً فقط برنامه‌هایی که به پروکسی وصل نشوند از آن استفاده نمی‌کنند.'
-      : 'Plain SOCKS/HTTP cannot filter by process name. This list is saved for future TUN routing. Today: apps only use the proxy if you point them at it.';
+      ? 'مثل Se7en: با SOCKS/HTTP محلی فیلتر process ممکن نیست. لیست ذخیره می‌شود. برنامه‌هایی که به پروکسی وصل نشوند از آن استفاده نمی‌کنند. برای فیلتر واقعی به TUN نیاز است.'
+      : 'Same as Se7en: plain SOCKS/HTTP cannot filter by process. List is saved. Apps only use the proxy if pointed at it. Real process bypass needs TUN.';
+  String get copyLog => fa ? 'کپی لاگ' : 'Copy log';
+  String get logCopied => fa ? 'لاگ کپی شد' : 'Log copied';
   String get sortBySpeed => fa ? 'مرتب‌سازی سرعت' : 'Sort by speed';
   String get recheckGroup => fa ? 'بررسی دوباره' : 'Recheck';
   String get expandGroup => fa ? 'جزئیات' : 'Details';
