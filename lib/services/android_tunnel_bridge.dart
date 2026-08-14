@@ -27,9 +27,14 @@ class AndroidTunnelBridge {
     });
   }
 
-  Future<void> start(String configJson) async {
+  /// [serverEntriesPath] is read on the Kotlin side (file can exceed Binder size limits).
+  Future<void> start(String configJson, {String? serverEntriesPath}) async {
     await ensureListening();
-    await _methods.invokeMethod<void>('start', {'config': configJson});
+    await _methods.invokeMethod<void>('start', {
+      'config': configJson,
+      if (serverEntriesPath != null && serverEntriesPath.isNotEmpty)
+        'serverEntriesPath': serverEntriesPath,
+    });
   }
 
   Future<void> stop() async {

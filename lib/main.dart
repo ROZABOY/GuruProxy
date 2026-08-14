@@ -48,7 +48,7 @@ Future<void> main() async {
       minimumSize: Size(720, 480),
       center: true,
       backgroundColor: Colors.transparent,
-      title: 'GuruProxy v2.4.3',
+      title: 'GuruProxy v2.5.0',
       titleBarStyle: TitleBarStyle.normal,
     );
     await windowManager.setPreventClose(true);
@@ -78,6 +78,14 @@ Future<void> main() async {
     await _tray!.init();
   }
 
+  // Smoke / CI: flutter run --dart-define=GURU_AUTO_CONNECT=true
+  const autoConnect = bool.fromEnvironment('GURU_AUTO_CONNECT');
+  if (autoConnect) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(tunnel.start());
+    });
+  }
+
   runApp(
     MultiProvider(
       providers: [
@@ -96,7 +104,7 @@ class GuruProxyApp extends StatelessWidget {
     final state = context.watch<AppState>();
     final isFa = state.locale.languageCode == 'fa';
     return MaterialApp(
-      title: 'GuruProxy v2.4.3',
+      title: 'GuruProxy v2.5.0',
       debugShowCheckedModeBanner: false,
       locale: state.locale,
       theme: GuruTheme.light,

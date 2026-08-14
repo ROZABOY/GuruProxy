@@ -34,8 +34,10 @@ Thumbs.db
 Desktop.ini
 .DS_Store
 
+assets/bin/network_config.json
+
+# Signing (never commit)
 android/key.properties
 android/keystore/
 *.jks
 *.keystore
-assets/bin/network_config.json

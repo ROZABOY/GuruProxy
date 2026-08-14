@@ -169,6 +169,7 @@ class ProtocolCatalog {
     required bool autoProtocol,
     required List<String> enabled,
     required String protocolMode,
+    bool preferHttp2Fronting = false,
   }) {
     final android = Platform.isAndroid || Platform.isIOS;
     List<String> raw;
@@ -185,10 +186,36 @@ class ProtocolCatalog {
     } else {
       raw = enabled.map(canonicalize).where((id) => options.any((o) => o.id == id)).toList();
       if (raw.isEmpty) {
-        return resolve(autoProtocol: true, enabled: const [], protocolMode: protocolMode);
+        return resolve(
+          autoProtocol: true,
+          enabled: const [],
+          protocolMode: protocolMode,
+          preferHttp2Fronting: preferHttp2Fronting,
+        );
       }
     }
-    return sanitizeForStart(raw, android: android);
+    var out = sanitizeForStart(raw, android: android);
+    if (preferHttp2Fronting) {
+      out = _preferHttp2(out);
+    }
+    return out;
+  }
+
+  /// Psiphon has no native gRPC tunnel protocol. Prefer HTTP-path Meek fronts
+  /// which behave best for HTTP/2 and gRPC-over-HTTPS style traffic.
+  static List<String> _preferHttp2(List<String> ids) {
+    const boost = [
+      'FRONTED-MEEK-HTTP-OSSH',
+      'FRONTED-MEEK-OSSH',
+      'FRONTED-MEEK-QUIC-OSSH',
+    ];
+    final set = ids.toSet();
+    final out = <String>[];
+    for (final id in boost) {
+      if (set.remove(id)) out.add(id);
+    }
+    out.addAll(ids.where(set.contains));
+    return out;
   }
 
   static List<String> _sorted(List<String> ids) {

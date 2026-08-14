@@ -2,7 +2,7 @@ class S {
   S(this.fa);
   final bool fa;
 
-  String get appName => 'GuruProxy v2.4.3';
+  String get appName => 'GuruProxy v2.5.0';
   String get menuConnect => fa ? 'اتصال' : 'Connect';
   String get menuSession => fa ? 'نشست' : 'Session';
   String get menuWhiteIp => fa ? 'اسکنر IP' : 'White IP';
@@ -76,6 +76,11 @@ class S {
   String get beastModeHint => fa
       ? 'AggressiveEstablishment — اتصال تهاجمی‌تر، مصرف بیشتر.'
       : 'AggressiveEstablishment — more aggressive dialing, higher load.';
+  String get preferHttp2Fronting =>
+      fa ? 'فرانتینگ HTTP/2 (دوستدار gRPC)' : 'HTTP/2 fronting (gRPC-friendly)';
+  String get preferHttp2FrontingHint => fa
+      ? 'پروتکل gRPC جدا در تونل نیست. اولویت با Fronted Meek HTTP برای ترافیک شبیه HTTP/2/gRPC.'
+      : 'No native gRPC tunnel protocol. Prefers Fronted Meek HTTP for HTTP/2 / gRPC-like traffic.';
   String get upstreamProxy => fa ? 'پروکسی بالادستی' : 'Upstream proxy';
   String get upstreamUrl => fa ? 'آدرس پروکسی' : 'Proxy URL';
   String get upstreamUser => fa ? 'نام کاربری' : 'Username';
@@ -124,8 +129,8 @@ class S {
   String get helpTitle => fa ? 'راهنمای GuruProxy' : 'GuruProxy Help';
   String get aboutTitle => fa ? 'درباره GuruProxy' : 'About GuruProxy';
   String get tagline => fa
-      ? 'پروکسی CDN — نسخه موبایل‌محور v2.4'
-      : 'CDN-fronted proxy — app-focused mobile build';
+      ? 'پروکسی CDN — خط gPRC / HTTP/2 · v2.5'
+      : 'CDN-fronted proxy — gPRC / HTTP/2 line · v2.5';
 
   String get aboutBody => fa
       ? 'GuruProxy یک کلاینت مستقل CDN-fronting است. رابط و برندینگ متعلق به GuruProxy است.\n\nبا سپاس از تیم Psiphon برای tunnel-core و اکوسیستم circumvention.'

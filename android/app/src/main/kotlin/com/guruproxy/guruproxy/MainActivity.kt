@@ -20,7 +20,9 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
+import android.util.Log
 import org.json.JSONObject
+import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
 
 class MainActivity : FlutterActivity(), PsiphonTunnel.HostService {
@@ -32,6 +34,7 @@ class MainActivity : FlutterActivity(), PsiphonTunnel.HostService {
         private const val NOTIF_ID = 2401
         private const val ACTION_STOP = "com.guruproxy.guruproxy.ACTION_STOP"
         private const val REQ_POST_NOTIF = 2402
+        private const val TAG = "GuruProxy"
     }
 
     private var notifChannel: MethodChannel? = null
@@ -40,6 +43,7 @@ class MainActivity : FlutterActivity(), PsiphonTunnel.HostService {
     private var stopReceiver: BroadcastReceiver? = null
     private var psiphonTunnel: PsiphonTunnel? = null
     private var configJson: String = "{}"
+    private var embeddedServerEntries: String = ""
     private val httpPort = AtomicInteger(0)
     private val socksPort = AtomicInteger(0)
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -54,7 +58,8 @@ class MainActivity : FlutterActivity(), PsiphonTunnel.HostService {
                 "init" -> {
                     ensureNotifChannel()
                     registerStopReceiver()
-                    maybeRequestNotificationPermission()
+                    // Do not request POST_NOTIFICATIONS here — it blocks the UI
+                    // before the user can connect. Request on first show().
                     result.success(null)
                 }
                 "show" -> {
@@ -82,12 +87,33 @@ class MainActivity : FlutterActivity(), PsiphonTunnel.HostService {
                         return@setMethodCallHandler
                     }
                     configJson = cfg
+                    // Read server list from disk — content is ~1MB+ and exceeds Binder limits.
+                    val path = call.argument<String>("serverEntriesPath")
+                    embeddedServerEntries = try {
+                        if (!path.isNullOrBlank()) {
+                            val f = File(path)
+                            if (f.isFile) {
+                                Log.i(TAG, "Loading server entries from ${f.length()} bytes")
+                                f.readText()
+                            } else {
+                                Log.w(TAG, "serverEntriesPath missing: $path")
+                                ""
+                            }
+                        } else {
+                            Log.w(TAG, "No serverEntriesPath — relying on remote list only")
+                            ""
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed reading server entries: ${e.message}")
+                        ""
+                    }
                     Thread {
                         try {
                             psiphonTunnel?.stop()
-                            psiphonTunnel?.startTunneling("")
+                            psiphonTunnel?.startTunneling(embeddedServerEntries)
                             mainHandler.post { result.success(null) }
                         } catch (e: Exception) {
+                            Log.e(TAG, "startTunneling failed: ${e.message}", e)
                             mainHandler.post {
                                 result.error("start_failed", e.message, null)
                             }
@@ -147,7 +173,10 @@ class MainActivity : FlutterActivity(), PsiphonTunnel.HostService {
     }
 
     override fun onDiagnosticMessage(message: String?) {
-        if (message != null) emit(mapOf("type" to "diagnostic", "message" to message))
+        if (message != null) {
+            Log.i(TAG, message)
+            emit(mapOf("type" to "diagnostic", "message" to message))
+        }
     }
 
     override fun onAvailableEgressRegions(regions: MutableList<String>?) {
@@ -181,6 +210,7 @@ class MainActivity : FlutterActivity(), PsiphonTunnel.HostService {
     }
 
     override fun onConnected() {
+        Log.i(TAG, "CONNECTED socks=${socksPort.get()} http=${httpPort.get()}")
         emit(
             mapOf(
                 "type" to "connected",
@@ -268,6 +298,7 @@ class MainActivity : FlutterActivity(), PsiphonTunnel.HostService {
 
     private fun showNotification(title: String, body: String) {
         ensureNotifChannel()
+        maybeRequestNotificationPermission()
         val launch = packageManager.getLaunchIntentForPackage(packageName)
         val contentPi = PendingIntent.getActivity(
             this,

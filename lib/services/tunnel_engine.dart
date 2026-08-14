@@ -97,6 +97,19 @@ class TunnelEngine extends ChangeNotifier {
     if (_activity.length > 8) _activity.removeAt(0);
   }
 
+  /// Writable status file for adb/run-as smoke loops (and Windows TEMP).
+  Future<void> _writeSmokeStatus(String line) async {
+    try {
+      final root = await NetworkCredentials.dataRoot();
+      final f = File('${root.path}${Platform.pathSeparator}connect_smoke_status.txt');
+      await f.writeAsString('${DateTime.now().toIso8601String()} $line\n', flush: true);
+      // Also mirror last lines of in-app log for pull diagnostics.
+      final log = File('${root.path}${Platform.pathSeparator}connect_smoke_log.txt');
+      final tail = _log.length <= 80 ? _log : _log.sublist(_log.length - 80);
+      await log.writeAsString(tail.join('\n'), flush: true);
+    } catch (_) {}
+  }
+
   static String _formatRate(double bps) {
     if (bps < 1024) return '${bps.toStringAsFixed(0)} B/s';
     if (bps < 1024 * 1024) return '${(bps / 1024).toStringAsFixed(1)} KB/s';
@@ -172,9 +185,22 @@ class TunnelEngine extends ChangeNotifier {
         _onAndroidEvent(ev);
       });
 
+      // Copy bundled server list next to config — Kotlin reads from disk (Binder ~1MB limit).
+      String? serverEntriesPath;
+      final bundled = bootstrap.serverEntries;
+      if (bundled != null && await bundled.exists()) {
+        final dest = File('${_workDir!.path}${Platform.pathSeparator}server_entries.txt');
+        await bundled.copy(dest.path);
+        serverEntriesPath = dest.path;
+        _append('Server entries: ${(await dest.length())} bytes → ${dest.path}');
+      } else {
+        _append('WARNING: server_entries.txt missing — remote list only (slow/fragile)');
+      }
+
       _androidRunning = true;
-      await bridge.start(config);
+      await bridge.start(config, serverEntriesPath: serverEntriesPath);
       _append('Android Psiphon library start requested');
+      await _writeSmokeStatus('connecting');
 
       final timeoutSec = settings.establishTimeoutSec.clamp(30, 600);
       _establishTimer?.cancel();
@@ -183,6 +209,7 @@ class TunnelEngine extends ChangeNotifier {
         if (state == TunnelState.connecting && _userWants) {
           lastError = 'establish timeout';
           _append('Could not establish a tunnel in time on Android.');
+          unawaited(_writeSmokeStatus('timeout'));
           stop();
         }
       });
@@ -192,6 +219,7 @@ class TunnelEngine extends ChangeNotifier {
       lastError = e.toString();
       state = TunnelState.error;
       statusHint = lastError;
+      unawaited(_writeSmokeStatus('error $e'));
       notifyListeners();
     }
   }
@@ -210,6 +238,7 @@ class TunnelEngine extends ChangeNotifier {
       httpPort = (ev['http'] as num?)?.toInt() ?? httpPort;
       _note('Connected');
       _append('Connected (SOCKS=$socksPort HTTP=$httpPort)');
+      unawaited(_writeSmokeStatus('connected socks=$socksPort http=$httpPort region=$connectedRegion'));
       notifyListeners();
       return;
     }

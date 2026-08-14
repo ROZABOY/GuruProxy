@@ -1,20 +1,24 @@
-# GuruProxy v2.4 — app-focused
+# GuruProxy v2.5 — gPRC / HTTP/2 fronting
 
-Mobile-first Flutter client (Android / iOS UI + Windows desktop still supported).
+Folder name: **`GuruProxy_v2.5_gPRC`** — keep this tree when comparing Windows vs Android across releases.
 
-See [CHANGELOG.md](CHANGELOG.md).
-
-## Run
+## Run locally
 
 ```bash
-cd GuruProxy_v2.4_app_focused
+cd GuruProxy_v2.5_gPRC
 flutter pub get
-flutter run   # phone or emulator
+flutter run -d windows
+# or
+flutter run -d <android-device>
 ```
 
-## Highlights
+Release builds land in `x_run_here_x/`:
 
-- Safe-area AppBar + bottom tabs (no overlap with camera / nav buttons)
-- Status panel under the connect button on phones
-- Ongoing session notification with speeds + **Stop**
-- Auto-protocol + per-protocol checkboxes (mobile vs Windows defaults)
+- `GuruProxy-v2.5.0-android.apk`
+- `GuruProxy-v2.5.0-windows/` (+ zip)
+
+## Notes
+
+- Requires private `assets/bin/network_config.json` + `server_entries.txt` (gitignored).
+- Optional Settings → **HTTP/2 fronting (gRPC-friendly)**.
+- GitHub: https://github.com/ROZABOY/GuruProxy/releases

@@ -227,7 +227,16 @@ class SettingsStore extends ChangeNotifier {
         autoProtocol: autoProtocol,
         enabled: enabledProtocols,
         protocolMode: protocolMode,
+        preferHttp2Fronting: preferHttp2Fronting,
       );
+
+  /// Optional: bias toward HTTP-path Meek (best available stand-in for gRPC-friendly fronts).
+  /// Default on for v2.5 gPRC line.
+  bool get preferHttp2Fronting => _prefs.getBool('preferHttp2Fronting') ?? true;
+  set preferHttp2Fronting(bool v) {
+    _prefs.setBool('preferHttp2Fronting', v);
+    notifyListeners();
+  }
 
   String get egressRegion {
     final v = _prefs.getString('egressRegion');
